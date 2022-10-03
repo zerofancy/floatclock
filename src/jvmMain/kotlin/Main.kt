@@ -17,6 +17,7 @@ import androidx.compose.ui.window.launchApplication
 import androidx.compose.ui.window.rememberTrayState
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.awt.Dimension
 import java.awt.Font
 import java.awt.Toolkit
@@ -53,7 +54,11 @@ fun main(vararg args: String) {
             val g = BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB).graphics
             val font = Font(g.font.name, g.font.style, 48)
             val bounds = font.getStringBounds("88: 88", g.fontMetrics.fontRenderContext)
-            size = Dimension(bounds.width.roundToInt(), bounds.height.roundToInt())
+            val fixedSize = {Dimension(bounds.width.roundToInt(), bounds.height.roundToInt())}
+            val initialSize = fixedSize()
+            size = fixedSize()
+            maximumSize = fixedSize()
+            minimumSize = fixedSize()
 
             defaultCloseOperation = JFrame.EXIT_ON_CLOSE
             // 显示在所有桌面
@@ -97,6 +102,18 @@ fun main(vararg args: String) {
                 )
 
                 LaunchedEffect(null) {
+                    launch {
+                        while (true) {
+                            delay(1000L)
+                            if (!isAlive) {
+                                return@launch
+                            }
+                            // 防止一些极端情况下窗口大小被改变
+                            if (size.height != initialSize.height || size.width != initialSize.width) {
+                                size = fixedSize()
+                            }
+                        }
+                    }
                     if (args.contains("--release")) {
                         return@LaunchedEffect
                     }

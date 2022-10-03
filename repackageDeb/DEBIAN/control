@@ -1,0 +1,11 @@
+Package: floatclock
+Version: {version}
+Section: misc
+Maintainer: {maintainer} <{maintainer-email}>
+Priority: optional
+Architecture: amd64
+Provides: floatclock
+Description: {description}
+Depends: libc6, libexpat1, xdg-utils, zlib1g
+Installed-Size: {installed-size}
+Homepage: {homepage}
