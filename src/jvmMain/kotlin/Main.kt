@@ -47,7 +47,6 @@ fun main(vararg args: String) {
     var isAlive = true
     GlobalScope.launchApplication {
         ComposeWindow().apply {
-
             // 计算预期窗口大小
             // https://stackoverflow.com/a/8267630
             val g = BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB).graphics
@@ -57,7 +56,7 @@ fun main(vararg args: String) {
 
             defaultCloseOperation = JFrame.EXIT_ON_CLOSE
             // 显示在所有桌面
-            type = java.awt.Window.Type.POPUP
+            type = java.awt.Window.Type.UTILITY
             // 无标题透明 不自动抢夺焦点
             isUndecorated = true
             isTransparent = true
