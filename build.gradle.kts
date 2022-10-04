@@ -108,7 +108,8 @@ tasks.register("repackageDeb") {
             .replace("{installed-size}", installSize.toString())
             .replace("{homepage}", "https://github.com/zerofancy/floatclock")
         File(debianPath, "control").writeText(newControl)
-        File(debianPath, "preinst").writeText(File("repackageDeb/DEBIAN/preinst").readText())
+        File(debianPath, "preinst").writeText(File(projectDir, "repackageDeb/DEBIAN/preinst").readText())
+        File(debianPath, "copyright").writeText(File(projectDir, "LICENSE").readText())
 
         // 重新打包 (ubuntu下默认使用zstd压缩，但这不能被debian/deepin现有版本支持)
         execProcessWait("dpkg-deb", "-b","-Zxz", extractPath.absolutePath, buildPath.absolutePath + "/")
