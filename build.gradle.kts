@@ -1,6 +1,5 @@
 import org.jetbrains.compose.compose
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import java.nio.file.Files
 
 plugins {
@@ -9,7 +8,7 @@ plugins {
 }
 
 group = "top.ntutn"
-version = "1.1"
+version = "1.1.0"
 
 repositories {
     google()
@@ -45,7 +44,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "floatclock"
-            packageVersion = "1.0.0"
+            packageVersion = version.toString()
             linux {
                 iconFile.set(project.file("src/jvmMain/resources/clock.png"))
             }
