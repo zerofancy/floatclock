@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=简易桌面悬浮时钟
+Comment=悬浮在所有窗口上方，更方便掌握摸鱼节奏。
+Exec=/opt/floatclock/bin/floatclock
+Icon=/opt/floatclock/lib/floatclock.png
+Terminal=false
+Type=Application
+Categories=Utility
+MimeType=

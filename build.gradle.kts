@@ -99,6 +99,14 @@ tasks.register("repackageDeb") {
         execProcessWait("dpkg", "-X", originDebFile.absolutePath, extractPath.absolutePath + "/")
         execProcessWait("dpkg", "-e", originDebFile.absolutePath, debianPath.absolutePath + "/")
 
+        // 释放LICENSE文件
+        File(debianPath, "copyright").writeText(File(projectDir, "LICENSE").readText())
+        File(extractPath, "opt/floatclock/share/doc/copyright").writeText(File(projectDir, "LICENSE").readText())
+
+        // 重建快捷方式
+        val libDir = File(extractPath, "opt/floatclock/lib")
+        File(projectDir, "repackageDeb/opt/floatclock/lib/floatclock.desktop").copyTo(File(libDir, "floatclock-floatclock.desktop"), true)
+
         // 覆盖控制脚本
         val installSize = Files.walk(File(extractPath, "opt").toPath()).mapToLong { p -> p.toFile().length() }.sum().let {
             (it / 1024f).toLong()
@@ -111,8 +119,10 @@ tasks.register("repackageDeb") {
             .replace("{installed-size}", installSize.toString())
             .replace("{homepage}", "https://github.com/zerofancy/floatclock")
         File(debianPath, "control").writeText(newControl)
-        File(debianPath, "preinst").writeText(File(projectDir, "repackageDeb/DEBIAN/preinst").readText())
-        File(debianPath, "copyright").writeText(File(projectDir, "LICENSE").readText())
+        File(projectDir, "repackageDeb/DEBIAN/preinst").copyTo(File(debianPath, "preinst"), true)
+
+        // 重置DEBIAN文件夹权限
+        execProcessWait("chmod", "755", "-R", debianPath.absolutePath)
 
         // 重新打包 (ubuntu下默认使用zstd压缩，但这不能被debian/deepin现有版本支持)
         execProcessWait("dpkg-deb", "-b","-Zxz", extractPath.absolutePath, buildPath.absolutePath + "/")
@@ -120,7 +130,12 @@ tasks.register("repackageDeb") {
         val outputFile = buildPath.listFiles { _: File, name: String-> name.endsWith(".deb") }?.firstOrNull()
         require(outputFile != null)
 
-        println("重新打包输出文件 ${outputFile.absolutePath}")
+        val arch = "amd64"
+        val finalOutputFile = File(buildPath, "floatclock_${version}-1_$arch.deb")
+
+        outputFile.renameTo(finalOutputFile)
+
+        println("重新打包输出文件 ${finalOutputFile.absolutePath}")
     }
 }
 
