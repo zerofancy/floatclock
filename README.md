@@ -16,3 +16,9 @@
 - KUbuntu 22.04
 
 我手里只有Linux设备和macOS设备，目前没找到如何在macOS上实现显示到当前屏幕（包括全屏窗口所在屏幕）上的方法。
+
+# 致谢
+
+本项目参考或使用了以下项目或其中的一部分。
+
+[misc](https://github.com/jjYBdx4IL/misc)

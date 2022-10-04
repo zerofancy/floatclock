@@ -1,5 +1,6 @@
 import org.jetbrains.compose.compose
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import java.nio.file.Files
 
 plugins {
@@ -25,8 +26,13 @@ kotlin {
     }
     sourceSets {
         val jvmMain by getting {
+            kotlin {
+                sourceSets["jvmMain"].kotlin.srcDir("build/src/generated/kotlin")
+            }
             dependencies {
                 implementation(compose.desktop.currentOs)
+                // https://mvnrepository.com/artifact/org.apache.commons/commons-lang3
+                implementation("org.apache.commons:commons-lang3:3.12.0")
             }
         }
         val jvmTest by getting
@@ -46,6 +52,23 @@ compose.desktop {
         }
         args("--release")
     }
+}
+
+tasks.register("generateBuildConfig") {
+    val content = """
+        package top.ntutn.floatclock
+        
+        object BuildConfig {
+            val version = "$version"
+        }
+    """.trimIndent()
+    val dir = File(projectDir, "build/src/generated/kotlin/top/ntutn/floatclock").also {
+        if (it.exists()) {
+            it.deleteRecursively()
+        }
+        it.mkdirs()
+    }
+    File(dir, "BuildConfig.kt").writeText(content)
 }
 
 tasks.register("repackageDeb") {
@@ -109,5 +132,11 @@ fun execProcessWait(command: String, vararg args: String = emptyArray()) {
     process.errorStream.use {
         val errorOutput = it.readAllBytes().decodeToString()
         require(errorOutput.isBlank()) { errorOutput }
+    }
+}
+
+tasks {
+    "compileJava" {
+        dependsOn("generateBuildConfig")
     }
 }
