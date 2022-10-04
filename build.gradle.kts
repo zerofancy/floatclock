@@ -96,7 +96,7 @@ tasks.register("repackageDeb") {
         execProcessWait("dpkg", "-X", originDebFile.absolutePath, extractPath.absolutePath + "/")
         execProcessWait("dpkg", "-e", originDebFile.absolutePath, debianPath.absolutePath + "/")
 
-        // 覆盖control
+        // 覆盖控制脚本
         val installSize = Files.walk(File(extractPath, "opt").toPath()).mapToLong { p -> p.toFile().length() }.sum().let {
             (it / 1024f).toLong()
         }
@@ -108,6 +108,7 @@ tasks.register("repackageDeb") {
             .replace("{installed-size}", installSize.toString())
             .replace("{homepage}", "https://github.com/zerofancy/floatclock")
         File(debianPath, "control").writeText(newControl)
+        File(debianPath, "preinst").writeText(File("repackageDeb/DEBIAN/preinst").readText())
 
         // 重新打包 (ubuntu下默认使用zstd压缩，但这不能被debian/deepin现有版本支持)
         execProcessWait("dpkg-deb", "-b","-Zxz", extractPath.absolutePath, buildPath.absolutePath + "/")
