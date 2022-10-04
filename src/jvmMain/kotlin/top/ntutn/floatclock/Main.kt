@@ -1,6 +1,5 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+package top.ntutn.floatclock// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
-import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.ClickableText
@@ -11,60 +10,44 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ExperimentalGraphicsApi
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFontLoader
+import androidx.compose.ui.res.ResourceLoader
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.apache.commons.lang3.SystemUtils
-import top.ntutn.floatclock.BuildConfig
 import java.awt.Dimension
 import java.awt.Font
 import java.awt.Toolkit
 import java.awt.Window
 import java.awt.image.BufferedImage
 import java.net.URI
-import java.text.SimpleDateFormat
 import javax.swing.JFrame
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
-import kotlin.random.Random
 import kotlin.system.exitProcess
 
-val sdf = SimpleDateFormat("hh:mm")
-
 @Composable
-@Preview
-fun Clock(color: Color = Color.Red) {
-    var text by remember { mutableStateOf("88:88") }
-    Text(text = text, fontSize = 48.sp, overflow = TextOverflow.Visible, maxLines = 1, color = color)
-    LaunchedEffect(null) {
-        while (true) {
-            text = sdf.format(System.currentTimeMillis())
-            delay(1000L)
-        }
-    }
-}
-
-@Composable
-fun ApplicationScope.TrayBlock(changeColor: () -> Unit, showAbout: () -> Unit, exit: () -> Unit) {
+fun ApplicationScope.TrayBlock(changeTheme: ()->Unit, changeColor: () -> Unit, showAbout: () -> Unit, exit: () -> Unit) {
     val trayState = rememberTrayState()
     Tray(
         state = trayState,
         icon = painterResource("clock.png"),
         menu = {
-            Item("Change Color", onClick = changeColor)
-            Item("About", onClick = showAbout)
-            Item("Exit", onClick = exit)
+            Item("更换主题", onClick = changeTheme)
+            Item("切换颜色", onClick = changeColor)
+            Item("关于", onClick = showAbout)
+            Item("退出", onClick = exit)
         },
         onAction = changeColor
     )
@@ -106,17 +89,7 @@ fun main(vararg args: String) {
     var isAlive = true
     GlobalScope.launchApplication {
         ComposeWindow().apply {
-
-            // 计算预期窗口大小
-            // https://stackoverflow.com/a/8267630
-            val g = BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB).graphics
-            val font = Font(g.font.name, g.font.style, 48)
-            val bounds = font.getStringBounds("88: 88", g.fontMetrics.fontRenderContext)
-            val fixedSize = { Dimension(bounds.width.roundToInt(), bounds.height.roundToInt()) }
-            val initialSize = fixedSize()
-            size = fixedSize()
-            maximumSize = fixedSize()
-            minimumSize = fixedSize()
+            size = Dimension(100, 100)
 
             defaultCloseOperation = JFrame.EXIT_ON_CLOSE
             // 显示在所有桌面
@@ -127,21 +100,34 @@ fun main(vararg args: String) {
             }
             // 无标题透明 不自动抢夺焦点
             isUndecorated = true
-            isTransparent = true
+            isTransparent = false
             isAutoRequestFocus = false
 
             // 自动显示在屏幕右下角
             val screenSize: Dimension = Toolkit.getDefaultToolkit().screenSize
             setLocation(screenSize.width - size.width * 2, screenSize.height - size.height * 2)
             setContent {
-                var color by remember { mutableStateOf(randomColor()) }
+                val density = LocalDensity.current
+                val resourceLoader = LocalFontLoader.current
+                var component: ClockComponent by remember { mutableStateOf(DigitalClockComponent(density, resourceLoader)) }
                 var isAboutShowing by remember { mutableStateOf(false) }
 
                 WindowDraggableArea(modifier = Modifier.fillMaxSize()) { }
-                Clock(color)
+                val currentComponent = component
+                if (currentComponent is DigitalClockComponent) {
+                    DigitalClock(currentComponent)
+                } else if (currentComponent is NormalClockComponent) {
+                    NormalClock(currentComponent)
+                }
 
-                TrayBlock(changeColor = {
-                    color = randomColor()
+                TrayBlock(changeTheme = {
+                    component = if (component is DigitalClockComponent) {
+                        NormalClockComponent(density, resourceLoader)
+                    } else {
+                        DigitalClockComponent(density, resourceLoader)
+                    }
+                }, changeColor = {
+                    component.changeColor()
                 }, showAbout = {
                     isAboutShowing = true
                 }, exit = {
@@ -153,19 +139,21 @@ fun main(vararg args: String) {
                     AboutDialog(onClose = { isAboutShowing = false })
                 }
 
-                LaunchedEffect(null) {
-                    launch {
-                        while (true) {
-                            delay(1000L)
-                            if (!isAlive) {
-                                return@launch
-                            }
-                            // 防止一些极端情况下窗口大小被改变
-                            if (size.height != initialSize.height || size.width != initialSize.width) {
-                                size = fixedSize()
-                            }
+                LaunchedEffect(component) {
+                    val expectedSize = component.measure()
+                    while (true) {
+                        if (!isAlive) {
+                            return@LaunchedEffect
                         }
+                        // 防止一些极端情况下窗口大小被改变
+                        if (size.height != expectedSize.height || size.width != expectedSize.width) {
+                            size = Dimension(expectedSize.width, expectedSize.height)
+                        }
+                        delay(1000L)
                     }
+                }
+
+                LaunchedEffect(null) {
                     if (args.contains("--release")) {
                         return@LaunchedEffect
                     }
@@ -187,18 +175,4 @@ fun main(vararg args: String) {
             }
         }
     }.join()
-}
-
-/**
- * 拍脑袋想的随机颜色算法
- */
-@OptIn(ExperimentalGraphicsApi::class)
-private fun randomColor(): Color {
-    val h = (0..360).random().toFloat()
-    val s = Random.nextFloat()
-    var l = Random.nextFloat()
-    while (l < 0.3f || l > 0.8) {
-        l = Random.nextFloat()
-    }
-    return Color.hsl(h, s, l)
 }

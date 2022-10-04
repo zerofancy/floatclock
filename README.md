@@ -25,4 +25,7 @@
 
 本项目参考或使用了以下项目或其中的一部分。
 
-[misc](https://github.com/jjYBdx4IL/misc)
+- [Apache Commons Lang](https://github.com/apache/commons-lang)
+- [Compose Desktop](https://github.com/JetBrains/compose-jb)
+- [digital7.font](https://www.dafont.com/digital-7.font)
+- [misc](https://github.com/jjYBdx4IL/misc)

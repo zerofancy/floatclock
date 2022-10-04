@@ -1,4 +1,4 @@
-/*
+package top.ntutn.floatclock/*
  * Copyright © 2017 jjYBdx4IL (https://github.com/jjYBdx4IL)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
