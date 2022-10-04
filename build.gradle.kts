@@ -49,6 +49,10 @@ compose.desktop {
             linux {
                 iconFile.set(project.file("src/jvmMain/resources/clock.png"))
             }
+            windows {
+                shortcut = true
+                iconFile.set(project.file("icon.ico"))
+            }
         }
         args("--release")
     }
