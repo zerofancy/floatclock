@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "top.ntutn"
-version = "1.0-SNAPSHOT"
+version = "1.1"
 
 repositories {
     google()
@@ -129,7 +129,7 @@ fun execProcessWait(command: String, vararg args: String = emptyArray()) {
     val commandAndArgs = listOf(command) + args
     print("exec:" + commandAndArgs.joinToString(" "))
     val process = Runtime.getRuntime().exec(commandAndArgs.toTypedArray())
-    process.waitFor()
+    val code = process.waitFor()
     process.inputStream.use { inputStream ->
         inputStream.readAllBytes().decodeToString().let {
             println(it)
@@ -137,8 +137,9 @@ fun execProcessWait(command: String, vararg args: String = emptyArray()) {
     }
     process.errorStream.use {
         val errorOutput = it.readAllBytes().decodeToString()
-        require(errorOutput.isBlank()) { errorOutput }
+        println(errorOutput)
     }
+    require(code == 0)
 }
 
 tasks {

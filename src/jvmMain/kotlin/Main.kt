@@ -25,10 +25,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.apache.commons.lang3.SystemUtils
 import top.ntutn.floatclock.BuildConfig
 import java.awt.Dimension
 import java.awt.Font
 import java.awt.Toolkit
+import java.awt.Window
 import java.awt.image.BufferedImage
 import java.net.URI
 import java.text.SimpleDateFormat
@@ -118,7 +120,11 @@ fun main(vararg args: String) {
 
             defaultCloseOperation = JFrame.EXIT_ON_CLOSE
             // 显示在所有桌面
-            type = java.awt.Window.Type.POPUP
+            type = if (SystemUtils.IS_OS_WINDOWS) {
+                Window.Type.UTILITY
+            } else {
+                Window.Type.POPUP
+            }
             // 无标题透明 不自动抢夺焦点
             isUndecorated = true
             isTransparent = true
