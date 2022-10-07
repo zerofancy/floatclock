@@ -58,7 +58,8 @@ compose.desktop {
             windows {
                 shortcut = true
                 iconFile.set(project.file("icon.ico"))
-
+                menu = true
+                menuGroup = "ntutn"
             }
         }
         args("--release")
