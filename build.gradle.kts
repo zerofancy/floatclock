@@ -48,6 +48,7 @@ compose.desktop {
     application {
         mainClass = "top.ntutn.floatclock.MainKt"
         nativeDistributions {
+            modules("java.compiler", "java.instrument", "jdk.unsupported")
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "floatclock"
             packageVersion = version.toString()
@@ -60,6 +61,35 @@ compose.desktop {
             }
         }
         args("--release")
+        // https://stackoverflow.com/a/44059335
+        /**
+         * Exception in thread "AWT-EventQueue-0" java.lang.reflect.InaccessibleObjectException: Unable to make private static int javax.swing.JOptionPane.styleFromMessageType(int) accessible: module java.desktop does not "opens javax.swing" to unnamed module @6e428587
+        at java.base/java.lang.reflect.AccessibleObject.checkCanSetAccessible(AccessibleObject.java:354)
+        at java.base/java.lang.reflect.AccessibleObject.checkCanSetAccessible(AccessibleObject.java:297)
+        at java.base/java.lang.reflect.Method.checkCanSetAccessible(Method.java:199)
+        at java.base/java.lang.reflect.Method.setAccessible(Method.java:193)
+        at top.ntutn.zhd.util.MsgBox$Companion.showOptionDialog(MsgBox.kt:29)
+        at top.ntutn.zhd.util.MsgBox$Companion.access$showOptionDialog(MsgBox.kt:11)
+        at top.ntutn.zhd.util.MsgBox.show(MsgBox.kt:100)
+        at top.ntutn.zhd.httrack.HttrackComponent$startListen$2.invokeSuspend(HttrackComponent.kt:51)
+        at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+        at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:106)
+        at java.desktop/java.awt.event.InvocationEvent.dispatch(InvocationEvent.java:318)
+        at java.desktop/java.awt.EventQueue.dispatchEventImpl(EventQueue.java:771)
+        at java.desktop/java.awt.EventQueue$4.run(EventQueue.java:722)
+        at java.desktop/java.awt.EventQueue$4.run(EventQueue.java:716)
+        at java.base/java.security.AccessController.doPrivileged(AccessController.java:399)
+        at java.base/java.security.ProtectionDomain$JavaSecurityAccessImpl.doIntersectionPrivilege(ProtectionDomain.java:86)
+        at java.desktop/java.awt.EventQueue.dispatchEvent(EventQueue.java:741)
+        at java.desktop/java.awt.EventDispatchThread.pumpOneEventForFilters(EventDispatchThread.java:203)
+        at java.desktop/java.awt.EventDispatchThread.pumpEventsForFilter(EventDispatchThread.java:124)
+        at java.desktop/java.awt.EventDispatchThread.pumpEventsForHierarchy(EventDispatchThread.java:113)
+        at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:109)
+        at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:101)
+        at java.desktop/java.awt.EventDispatchThread.run(EventDispatchThread.java:90)
+        Suppressed: kotlinx.coroutines.DiagnosticCoroutineContextException: [StandaloneCoroutine{Cancelling}@511348e2, Dispatchers.Main]
+         */
+        jvmArgs += listOf("--add-opens=java.desktop/javax.swing=ALL-UNNAMED")
     }
 }
 
