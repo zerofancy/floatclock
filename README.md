@@ -24,7 +24,7 @@
 
 ## 存储
 
-程序配置放在用户目录的 `.config/floatclock` 文件夹下。目前只会写入一个mapdb数据库文件。
+程序配置放在用户目录的 `.config/floatclock` 文件夹下（Windows在 `%LOCALAPPDATA%\floatclock` 下）。目前只会写入一个mapdb数据库文件。
 
 ## 致谢
 
