@@ -53,7 +53,8 @@ fun main(vararg args: String) {
                     override fun mouseClicked(e: MouseEvent?) {
                         e ?: return
                         if (SwingUtilities.isLeftMouseButton(e)) {
-                            // 左键点击，切换主题？
+                            // 左键点击
+                            appComponent.themeComponent.value.changeColor()
                             return
                         }
                         val pointerLocation = MouseInfo.getPointerInfo().location

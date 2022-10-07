@@ -58,6 +58,7 @@ compose.desktop {
             windows {
                 shortcut = true
                 iconFile.set(project.file("icon.ico"))
+
             }
         }
         args("--release")
