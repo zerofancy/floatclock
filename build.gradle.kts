@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "top.ntutn"
-version = "1.1.0"
+version = "2.0.0"
 
 repositories {
     google()
@@ -32,6 +32,12 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 // https://mvnrepository.com/artifact/org.apache.commons/commons-lang3
                 implementation("org.apache.commons:commons-lang3:3.12.0")
+                // https://mvnrepository.com/artifact/com.arkivanov.decompose/decompose
+//                implementation("com.arkivanov.decompose:decompose:1.0.0-alpha-06")
+//                implementation("com.arkivanov.decompose:extensions-compose-jetbrains:1.0.0-alpha-06")
+                implementation("org.mapdb:mapdb:3.0.8") {
+                    exclude("org.jetbrains.kotlin", "kotlin-stdlib")
+                }
             }
         }
         val jvmTest by getting

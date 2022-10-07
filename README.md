@@ -12,6 +12,7 @@
 
 - 时间显示
 - 随机颜色
+- 数码管风格主题
 
 ## 支持系统
 
@@ -21,11 +22,17 @@
 
 我目前没找到java swing如何在macOS上实现显示到当前屏幕（包括全屏窗口所在屏幕）上的方法，如果有大佬知道还望不吝赐教。
 
-# 致谢
+## 存储
+
+程序配置放在用户目录的 `.config/floatclock` 文件夹下。目前只会写入一个mapdb数据库文件。
+
+## 致谢
 
 本项目参考或使用了以下项目或其中的一部分。
 
 - [Apache Commons Lang](https://github.com/apache/commons-lang)
 - [Compose Desktop](https://github.com/JetBrains/compose-jb)
+- [Decompose](https://github.com/arkivanov/Decompose)
 - [digital7.font](https://www.dafont.com/digital-7.font)
+- [mapdb](https://mapdb.org/)
 - [misc](https://github.com/jjYBdx4IL/misc)

@@ -1,95 +1,76 @@
 package top.ntutn.floatclock// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.ClickableText
-import androidx.compose.foundation.window.WindowDraggableArea
-import androidx.compose.material.Text
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalFontLoader
-import androidx.compose.ui.res.ResourceLoader
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.apache.commons.lang3.SystemUtils
-import java.awt.Dimension
-import java.awt.Font
-import java.awt.Toolkit
-import java.awt.Window
-import java.awt.image.BufferedImage
-import java.net.URI
+import top.ntutn.floatclock.clock.ClockPanel
+import top.ntutn.floatclock.clock.ContextMenu
+import top.ntutn.floatclock.clock.MotionPanel
+import top.ntutn.floatclock.component.AppComponent
+import top.ntutn.floatclock.storage.ConfigUtil
+import java.awt.*
+import java.awt.event.*
+import javax.imageio.ImageIO
 import javax.swing.JFrame
-import kotlin.concurrent.thread
-import kotlin.math.roundToInt
-import kotlin.system.exitProcess
+import javax.swing.SwingUtilities
 
-@Composable
-fun ApplicationScope.TrayBlock(changeTheme: ()->Unit, changeColor: () -> Unit, showAbout: () -> Unit, exit: () -> Unit) {
-    val trayState = rememberTrayState()
-    Tray(
-        state = trayState,
-        icon = painterResource("clock.png"),
-        menu = {
-            Item("更换主题", onClick = changeTheme)
-            Item("切换颜色", onClick = changeColor)
-            Item("关于", onClick = showAbout)
-            Item("退出", onClick = exit)
-        },
-        onAction = changeColor
-    )
-}
+object App
 
-@Composable
-fun AboutDialog(onClose: () -> Unit) {
-    Dialog(onCloseRequest = onClose, title = "关于") {
-        Column(modifier = Modifier.fillMaxSize()) {
-            val url = "https://github.com/zerofancy/floatclock"
-            val modifier = Modifier.align(Alignment.CenterHorizontally)
-
-            Spacer(modifier.height(16.dp))
-            Image(
-                painter = painterResource("clock.png"),
-                contentDescription = null,
-                modifier = modifier.size(64.dp, 64.dp)
-            )
-            Spacer(modifier.height(8.dp))
-            Text("kotlin-float-clock ${BuildConfig.version}", modifier = modifier)
-            Spacer(modifier.height(8.dp))
-            ClickableText(buildAnnotatedString {
-                pushStringAnnotation(tag = "URL", annotation = url)
-                withStyle(style = SpanStyle(color = Color.Blue, fontWeight = FontWeight.Bold)) {
-                    append(url)
-                }
-                pop()
-            }, modifier = modifier, onClick = {
-                onClose()
-                GlobalScope.launch(Dispatchers.Default) {
-                    DesktopBrowse.browse(URI.create(url))
-                }
-            })
-        }
-    }
-}
-
+@OptIn(DelicateCoroutinesApi::class)
 fun main(vararg args: String) {
-    var isAlive = true
-    GlobalScope.launchApplication {
-        ComposeWindow().apply {
-            size = Dimension(100, 100)
+    ConfigUtil.init()
+    val appComponent = AppComponent()
+    // 图标太大设置后会不起效
+    val appIconImage = ImageIO.read(App.javaClass.classLoader.getResourceAsStream("clock_small.png"))
+    GlobalScope.launch(Dispatchers.Main) {
+        val aboutDialog = ComposeWindow().also {
+            it.setContent {
+                AboutContent()
+            }
+            it.size = Dimension(400, 300)
+            it.setLocationRelativeTo(null)
+
+            it.iconImage = appIconImage
+        }
+        JFrame().apply {
+            val popupMenu = ContextMenu(
+                themeAction = appComponent::changeTheme,
+                colorAction = { appComponent.themeComponent.value.changeColor() },
+                aboutAction = aboutDialog::show,
+                exitAction = ::dispose
+            )
+            if (SystemTray.isSupported()) {
+                val trayIcon = TrayIcon(appIconImage, "简易桌面悬浮时钟")
+                trayIcon.addMouseListener(object : MouseAdapter() {
+                    override fun mouseClicked(e: MouseEvent?) {
+                        e ?: return
+                        if (SwingUtilities.isLeftMouseButton(e)) {
+                            // 左键点击，切换主题？
+                            return
+                        }
+                        popupMenu.setLocation(e.x, e.y)
+                        popupMenu.invoker = popupMenu
+                        popupMenu.isVisible = true
+                    }
+                })
+                trayIcon.isImageAutoSize = true
+                SystemTray.getSystemTray().add(trayIcon)
+                addWindowListener(object : WindowAdapter() {
+                    override fun windowClosed(e: WindowEvent?) {
+                        super.windowClosed(e)
+                        SystemTray.getSystemTray().remove(trayIcon)
+                    }
+                })
+            }
+
+            appComponent.floatWindowSize.subscribe {
+                size = it
+            }
 
             defaultCloseOperation = JFrame.EXIT_ON_CLOSE
             // 显示在所有桌面
@@ -100,79 +81,20 @@ fun main(vararg args: String) {
             }
             // 无标题透明 不自动抢夺焦点
             isUndecorated = true
-            isTransparent = false
+            background = Color(255, 255, 255, 0)
             isAutoRequestFocus = false
 
             // 自动显示在屏幕右下角
             val screenSize: Dimension = Toolkit.getDefaultToolkit().screenSize
             setLocation(screenSize.width - size.width * 2, screenSize.height - size.height * 2)
-            setContent {
-                val density = LocalDensity.current
-                val resourceLoader = LocalFontLoader.current
-                var component: ClockComponent by remember { mutableStateOf(DigitalClockComponent(density, resourceLoader)) }
-                var isAboutShowing by remember { mutableStateOf(false) }
 
-                WindowDraggableArea(modifier = Modifier.fillMaxSize()) { }
-                val currentComponent = component
-                if (currentComponent is DigitalClockComponent) {
-                    DigitalClock(currentComponent)
-                } else if (currentComponent is NormalClockComponent) {
-                    NormalClock(currentComponent)
-                }
-
-                TrayBlock(changeTheme = {
-                    component = if (component is DigitalClockComponent) {
-                        NormalClockComponent(density, resourceLoader)
-                    } else {
-                        DigitalClockComponent(density, resourceLoader)
-                    }
-                }, changeColor = {
-                    component.changeColor()
-                }, showAbout = {
-                    isAboutShowing = true
-                }, exit = {
-                    dispose()
-                    exitApplication()
-                    isAlive = false
-                })
-                if (isAboutShowing) {
-                    AboutDialog(onClose = { isAboutShowing = false })
-                }
-
-                LaunchedEffect(component) {
-                    val expectedSize = component.measure()
-                    while (true) {
-                        if (!isAlive) {
-                            return@LaunchedEffect
-                        }
-                        // 防止一些极端情况下窗口大小被改变
-                        if (size.height != expectedSize.height || size.width != expectedSize.width) {
-                            size = Dimension(expectedSize.width, expectedSize.height)
-                        }
-                        delay(1000L)
-                    }
-                }
-
-                LaunchedEffect(null) {
-                    if (args.contains("--release")) {
-                        return@LaunchedEffect
-                    }
-                    // 防止debug时配错参数导致无法退出
-                    delay(60_000)
-                    exitProcess(0)
-                }
-            }
+            add(MotionPanel(this) {
+                popupMenu.show(this, it.x, it.y)
+            })
+            add(ClockPanel(appComponent))
             // 置顶显示
             isAlwaysOnTop = true
             isVisible = true
         }
     }
-    thread {
-        while (true) {
-            Thread.sleep(1000)
-            if (!isAlive) {
-                break
-            }
-        }
-    }.join()
 }
