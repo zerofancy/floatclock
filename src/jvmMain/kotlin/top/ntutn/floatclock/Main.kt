@@ -28,20 +28,23 @@ fun main(vararg args: String) {
     // 图标太大设置后会不起效
     val appIconImage = ImageIO.read(App.javaClass.classLoader.getResourceAsStream("clock_small.png"))
     GlobalScope.launch(Dispatchers.Main) {
-        val aboutDialog = ComposeWindow().also {
-            it.setContent {
-                AboutContent()
-            }
-            it.size = Dimension(400, 300)
-            it.setLocationRelativeTo(null)
+        val aboutDialogFactory = {
+            ComposeWindow().also {
+                it.setContent {
+                    AboutContent()
+                }
+                it.size = Dimension(400, 300)
+                it.setLocationRelativeTo(null)
 
-            it.iconImage = appIconImage
+                it.iconImage = appIconImage
+                it.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
+            }
         }
         JFrame().apply {
             val popupMenu = ContextMenu(
                 themeAction = appComponent::changeTheme,
                 colorAction = { appComponent.themeComponent.value.changeColor() },
-                aboutAction = aboutDialog::show,
+                aboutAction = { aboutDialogFactory().isVisible = true },
                 exitAction = ::dispose
             )
             if (SystemTray.isSupported()) {
