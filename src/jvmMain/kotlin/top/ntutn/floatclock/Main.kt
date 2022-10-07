@@ -56,7 +56,8 @@ fun main(vararg args: String) {
                             // 左键点击，切换主题？
                             return
                         }
-                        popupMenu.setLocation(e.x, e.y)
+                        val pointerLocation = MouseInfo.getPointerInfo().location
+                        popupMenu.location = pointerLocation
                         popupMenu.invoker = popupMenu
                         popupMenu.isVisible = true
                     }
@@ -84,7 +85,13 @@ fun main(vararg args: String) {
             }
             // 无标题透明 不自动抢夺焦点
             isUndecorated = true
-            background = Color(255, 255, 255, 0)
+            background = Color(
+                255, 255, 255, if (SystemUtils.IS_OS_WINDOWS) {
+                    1 // Windows设置为0会出现鼠标穿透
+                } else {
+                    0
+                }
+            )
             isAutoRequestFocus = false
 
             // 自动显示在屏幕右下角

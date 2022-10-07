@@ -1,5 +1,6 @@
 package top.ntutn.floatclock.storage
 
+import org.apache.commons.lang3.SystemUtils
 import org.mapdb.DB
 import org.mapdb.DBException
 import org.mapdb.DBMaker
@@ -15,7 +16,11 @@ object ConfigUtil {
 
     fun init() {
         val userHome = System.getProperty("user.home")
-        val dbPath = File(userHome, ".config/floatclock")
+        val dbPath = if (SystemUtils.IS_OS_WINDOWS) {
+            File(System.getenv("LOCALAPPDATA"), "floatclock")
+        } else {
+            File(userHome, ".config/floatclock")
+        }
         dbPath.mkdirs()
         val dbFile = File(dbPath, "config.mpdb")
         try {
