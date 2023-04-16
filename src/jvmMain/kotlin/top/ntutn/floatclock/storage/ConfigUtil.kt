@@ -26,6 +26,7 @@ object ConfigUtil {
         try {
             configDb = DBMaker.fileDB(dbFile)
                 .fileMmapEnable()
+                .checksumHeaderBypass()
                 .closeOnJvmShutdown()
                 .make()
         } catch (e: DBException.FileLocked) {
