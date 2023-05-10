@@ -12,5 +12,5 @@ interface IClockComponent {
 
     fun getTextColor(): Value<Color>
 
-    fun changeColor()
+    fun changeColor(colorString: String?)
 }

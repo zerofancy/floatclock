@@ -3,7 +3,6 @@ package top.ntutn.floatclock.component
 import top.ntutn.floatclock.decompose.MutableValue
 import top.ntutn.floatclock.decompose.Value
 import top.ntutn.floatclock.storage.intPropertyConfig
-import top.ntutn.floatclock.storage.stringPropertyConfig
 import java.awt.Color
 import java.awt.Dimension
 import java.awt.Font
@@ -32,8 +31,11 @@ abstract class ClockComponent : IClockComponent {
         return Color(r, g, b)
     }
 
-    override fun changeColor() {
-        textColor.value = saveColor(randomColor())
+    override fun changeColor(colorString: String?) {
+        val color = colorString?.let {
+            Color.decode(it)
+        } ?: randomColor()
+        textColor.value = saveColor(color)
     }
 
     private fun saveColor(color: Color): Color {
@@ -71,15 +73,12 @@ abstract class ClockComponent : IClockComponent {
     }
 
     /**
-     * 拍脑袋想的随机颜色算法
+     * 随机颜色
      */
     private fun randomColor(): Color {
         val h = Random.nextFloat()
         val s = Random.nextFloat()
-        var l = Random.nextFloat()
-        while (l < 0.5f) {
-            l = Random.nextFloat()
-        }
-        return Color.getHSBColor(h, s, l)
+        val l = Random.nextFloat()
+        return Color.getHSBColor(h, s, l).brighter()
     }
 }

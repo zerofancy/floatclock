@@ -1,8 +1,6 @@
 package top.ntutn.floatclock// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
-import androidx.compose.foundation.layout.*
 import androidx.compose.ui.awt.ComposeWindow
-import androidx.compose.ui.window.*
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -43,7 +41,7 @@ fun main(vararg args: String) {
         JFrame().apply {
             val popupMenu = ContextMenu(
                 themeAction = appComponent::changeTheme,
-                colorAction = { appComponent.themeComponent.value.changeColor() },
+                colorAction = appComponent.themeComponent.value::changeColor,
                 aboutAction = { aboutDialogFactory().isVisible = true },
                 exitAction = ::dispose
             )
@@ -54,7 +52,7 @@ fun main(vararg args: String) {
                         e ?: return
                         if (SwingUtilities.isLeftMouseButton(e)) {
                             // 左键点击
-                            appComponent.themeComponent.value.changeColor()
+                            appComponent.themeComponent.value.changeColor(null)
                             return
                         }
                         val pointerLocation = MouseInfo.getPointerInfo().location
