@@ -41,6 +41,7 @@ fun main(vararg args: String) {
         JFrame().apply {
             val popupMenu = ContextMenu(
                 themeAction = appComponent::changeTheme,
+                colorEditAction = appComponent.themeComponent.value::showEditColorPanel,
                 colorAction = appComponent.themeComponent.value::changeColor,
                 aboutAction = { aboutDialogFactory().isVisible = true },
                 exitAction = ::dispose

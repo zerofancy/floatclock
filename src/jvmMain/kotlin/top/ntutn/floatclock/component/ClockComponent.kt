@@ -1,5 +1,7 @@
 package top.ntutn.floatclock.component
 
+import top.ntutn.floatclock.coloredit.ColorEditPanel
+import top.ntutn.floatclock.coloredit.showEditPanel
 import top.ntutn.floatclock.decompose.MutableValue
 import top.ntutn.floatclock.decompose.Value
 import top.ntutn.floatclock.storage.intPropertyConfig
@@ -34,8 +36,16 @@ abstract class ClockComponent : IClockComponent {
     override fun changeColor(colorString: String?) {
         val color = colorString?.let {
             Color.decode(it)
-        } ?: randomColor()
+        } ?: textColor.value
         textColor.value = saveColor(color)
+    }
+
+    override fun showEditColorPanel() {
+        val color = textColor.value
+        val r = color.red
+        val g = color.green
+        val b = color.blue
+        ColorEditPanel.showEditPanel("#${Integer.toHexString(r) + Integer.toHexString(g) + Integer.toHexString(b)}", ::changeColor)
     }
 
     private fun saveColor(color: Color): Color {

@@ -7,6 +7,7 @@ import javax.swing.JPopupMenu
 class ContextMenu(
     private val themeAction: () -> Unit,
     private val colorAction: (String?) -> Unit,
+    private val colorEditAction: () -> Unit,
     private val aboutAction: () -> Unit,
     private val exitAction: () -> Unit
 ) : JPopupMenu() {
@@ -30,6 +31,7 @@ class ContextMenu(
                 it.isEnabled = false
             })
             add("随机").addActionListener { colorAction(null) }
+            add("编辑").addActionListener { colorEditAction() }
         }.also {
             add(it)
         }

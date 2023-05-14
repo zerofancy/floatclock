@@ -13,4 +13,6 @@ interface IClockComponent {
     fun getTextColor(): Value<Color>
 
     fun changeColor(colorString: String?)
+
+    fun showEditColorPanel()
 }
