@@ -42,10 +42,9 @@ abstract class ClockComponent : IClockComponent {
 
     override fun showEditColorPanel() {
         val color = textColor.value
-        val r = color.red
-        val g = color.green
-        val b = color.blue
-        ColorEditPanel.showEditPanel("#${Integer.toHexString(r) + Integer.toHexString(g) + Integer.toHexString(b)}", ::changeColor)
+        ColorEditPanel.showEditPanel(color) {
+            textColor.value = saveColor(it)
+        }
     }
 
     private fun saveColor(color: Color): Color {
