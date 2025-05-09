@@ -25,8 +25,16 @@ kotlin {
     jvm("desktop")
     sourceSets {
         val desktopMain by getting
+        commonMain.dependencies {
+            implementation(compose.components.resources)
+        }
+
         desktopMain.dependencies {
-            implementation(compose.desktop.currentOs)
+            implementation(compose.runtime)
+            implementation(compose.foundation)
+            implementation(compose.material)
+            implementation(compose.ui)
+            implementation(compose.components.uiToolingPreview)
             implementation("org.apache.commons:commons-lang3:3.12.0")
             implementation("org.mapdb:mapdb:3.0.8") {
                 exclude("org.jetbrains.kotlin", "kotlin-stdlib")
