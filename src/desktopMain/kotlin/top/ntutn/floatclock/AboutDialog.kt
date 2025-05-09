@@ -33,7 +33,7 @@ fun AboutContent() {
                 modifier = modifier.size(64.dp, 64.dp)
             )
             Spacer(modifier.height(8.dp))
-            Text("kotlin-float-clock ${BuildConfig.version}", modifier = modifier)
+            Text("${BuildConfig.APP_NAME} ${BuildConfig.APP_VERSION}", modifier = modifier)
             Spacer(modifier.height(8.dp))
             ClickableText(buildAnnotatedString {
                 pushStringAnnotation(tag = "URL", annotation = url)
