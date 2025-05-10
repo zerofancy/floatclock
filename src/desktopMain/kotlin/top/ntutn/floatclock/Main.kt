@@ -14,8 +14,8 @@ import top.ntutn.floatclock.storage.ConfigUtil
 import java.awt.*
 import java.awt.event.*
 import javax.imageio.ImageIO
+import javax.swing.JDialog
 import javax.swing.JFrame
-import javax.swing.SwingUtilities
 
 object App
 
@@ -38,73 +38,50 @@ fun main(vararg args: String) {
                 it.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
             }
         }
-        JFrame().apply {
-            val popupMenu = ContextMenu(
-                themeAction = appComponent::changeTheme,
-                colorEditAction = appComponent.themeComponent.value::showEditColorPanel,
-                colorAction = appComponent.themeComponent.value::changeColor,
-                aboutAction = { aboutDialogFactory().isVisible = true },
-                exitAction = ::dispose
-            )
-            if (SystemTray.isSupported()) {
-                val trayIcon = TrayIcon(appIconImage, "简易桌面悬浮时钟")
-                trayIcon.addMouseListener(object : MouseAdapter() {
-                    override fun mouseClicked(e: MouseEvent?) {
-                        e ?: return
-                        if (SwingUtilities.isLeftMouseButton(e)) {
-                            // 左键点击
-                            appComponent.themeComponent.value.changeColor(null)
-                            return
-                        }
-                        val pointerLocation = MouseInfo.getPointerInfo().location
-                        popupMenu.location = pointerLocation
-                        popupMenu.invoker = popupMenu
-                        popupMenu.isVisible = true
-                    }
-                })
-                trayIcon.isImageAutoSize = true
-                SystemTray.getSystemTray().add(trayIcon)
-                addWindowListener(object : WindowAdapter() {
-                    override fun windowClosed(e: WindowEvent?) {
-                        super.windowClosed(e)
-                        SystemTray.getSystemTray().remove(trayIcon)
-                    }
-                })
-            }
-
-            appComponent.floatWindowSize.subscribe {
-                size = it
-            }
-
-            defaultCloseOperation = JFrame.EXIT_ON_CLOSE
-            // 显示在所有桌面
-            type = if (SystemUtils.IS_OS_WINDOWS) {
-                Window.Type.UTILITY
-            } else {
-                Window.Type.POPUP
-            }
-            // 无标题透明 不自动抢夺焦点
-            isUndecorated = true
-            background = Color(
-                255, 255, 255, if (SystemUtils.IS_OS_WINDOWS) {
-                    1 // Windows设置为0会出现鼠标穿透
-                } else {
-                    0
-                }
-            )
-            isAutoRequestFocus = false
-
-            // 自动显示在屏幕右下角
-            val screenSize: Dimension = Toolkit.getDefaultToolkit().screenSize
-            setLocation(screenSize.width - size.width * 2, screenSize.height - size.height * 2)
-
-            add(MotionPanel(this) {
-                popupMenu.show(this, it.x, it.y)
-            })
-            add(ClockPanel(appComponent))
-            // 置顶显示
-            isAlwaysOnTop = true
-            isVisible = true
+        showFloatingWindow(appComponent) {
+            aboutDialogFactory().isVisible = true
         }
+    }
+}
+
+fun showFloatingWindow(appComponent: AppComponent, showAboutWindowAction: () -> Unit) {
+    JDialog().apply {
+        val popupMenu = ContextMenu(
+            themeAction = appComponent::changeTheme,
+            colorEditAction = appComponent.themeComponent.value::showEditColorPanel,
+            colorAction = appComponent.themeComponent.value::changeColor,
+            aboutAction = showAboutWindowAction,
+            exitAction = ::dispose
+        )
+
+        appComponent.floatWindowSize.subscribe {
+            size = it
+        }
+
+        defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
+        // 显示在所有桌面
+        type = Window.Type.UTILITY
+        // 无标题透明 不自动抢夺焦点
+        isUndecorated = true
+        background = Color(
+            255, 255, 255, if (SystemUtils.IS_OS_WINDOWS) {
+                1 // Windows设置为0会出现鼠标穿透
+            } else {
+                0
+            }
+        )
+        isAutoRequestFocus = false
+
+        // 自动显示在屏幕右下角
+        val screenSize: Dimension = Toolkit.getDefaultToolkit().screenSize
+        setLocation(screenSize.width - size.width * 2, screenSize.height - size.height * 2)
+
+        add(MotionPanel(this) {
+            popupMenu.show(this, it.x, it.y)
+        })
+        add(ClockPanel(appComponent))
+        // 置顶显示
+        isAlwaysOnTop = true
+        isVisible = true
     }
 }

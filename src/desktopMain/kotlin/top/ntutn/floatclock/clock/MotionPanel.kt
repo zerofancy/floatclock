@@ -2,6 +2,7 @@ package top.ntutn.floatclock.clock
 
 import java.awt.Point
 import java.awt.event.*
+import javax.swing.JDialog
 import javax.swing.JFrame
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
@@ -10,7 +11,7 @@ import javax.swing.SwingUtilities
  * 无标题拖动
  * https://stackoverflow.com/a/13171534
  */
-class MotionPanel(private val parent: JFrame, private val rightClickCallback: (MouseEvent) -> Unit) : JPanel() {
+class MotionPanel(private val parent: JDialog, private val rightClickCallback: (MouseEvent) -> Unit) : JPanel() {
     private var initialClick: Point? = null
 
     init {
