@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.buildconfig)
+    alias(libs.plugins.kotlinx.serialization)
 }
 
 group = "top.ntutn"
@@ -32,14 +33,14 @@ kotlin {
             implementation(compose.ui)
             implementation(compose.components.uiToolingPreview)
             implementation(compose.components.resources)
+            api(libs.androidx.datastore.preferences.core)
+            api(libs.androidx.datastore.core.okio)
+            implementation(libs.kotlinx.serialization)
         }
 
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation("org.apache.commons:commons-lang3:3.12.0")
-            implementation("org.mapdb:mapdb:3.0.8") {
-                exclude("org.jetbrains.kotlin", "kotlin-stdlib")
-            }
             implementation(libs.kotlinx.coroutines.swing)
         }
     }

@@ -6,6 +6,8 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import top.ntutn.floatclock.component.AppComponent
 import java.awt.Color
@@ -23,9 +25,9 @@ class ClockPanel(private val appComponent: AppComponent) : JPanel() {
             val newDimension = it.measure()
             appComponent.floatWindowLayout(newDimension.width, newDimension.height)
             repaint()
-            it.getTextColor().subscribe {
+            it.getTextColorFlow().onEach {
                 repaint()
-            }
+            }.launchIn(coroutineScope)
         }
 
         coroutineScope.launch(Dispatchers.Main) {

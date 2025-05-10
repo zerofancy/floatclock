@@ -10,7 +10,6 @@ import top.ntutn.floatclock.clock.ClockPanel
 import top.ntutn.floatclock.clock.ContextMenu
 import top.ntutn.floatclock.clock.MotionPanel
 import top.ntutn.floatclock.component.AppComponent
-import top.ntutn.floatclock.storage.ConfigUtil
 import java.awt.*
 import java.awt.event.*
 import java.awt.image.BufferedImage
@@ -24,7 +23,6 @@ object App
 
 @OptIn(DelicateCoroutinesApi::class)
 fun main(vararg args: String) {
-    ConfigUtil.init()
     val appComponent = AppComponent()
     // 图标太大设置后会不起效
     val appIconImage = ImageIO.read(App.javaClass.classLoader.getResourceAsStream("clock_small.png"))
@@ -51,8 +49,12 @@ private fun showFloatingWindow(appIconImage: BufferedImage, appComponent: AppCom
     JDialog().apply {
         val popupMenu = ContextMenu(
             themeAction = appComponent::changeTheme,
-            colorEditAction = appComponent.themeComponent.value::showEditColorPanel,
-            colorAction = appComponent.themeComponent.value::changeColor,
+            colorEditAction = {
+                appComponent.themeComponent.value.showEditColorPanel()
+            },
+            colorAction = {
+                appComponent.themeComponent.value.changeColor(it)
+            },
             aboutAction = showAboutWindowAction,
             exitAction = ::dispose
         )
