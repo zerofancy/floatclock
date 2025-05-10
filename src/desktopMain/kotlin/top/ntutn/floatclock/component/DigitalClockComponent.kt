@@ -1,5 +1,6 @@
 package top.ntutn.floatclock.component
 
+import top.ntutn.floatclock.storage.ThemeDataStore
 import java.awt.Dimension
 import java.awt.Font
 import java.awt.image.BufferedImage
@@ -7,7 +8,7 @@ import java.util.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-class DigitalClockComponent : ClockComponent() {
+class DigitalClockComponent(themeDataStore: ThemeDataStore) : ClockComponent(themeDataStore) {
     override fun getFont(): Font {
         return Font.createFont(Font.TRUETYPE_FONT, javaClass.classLoader.getResourceAsStream("digital-7.ttf"))
     }

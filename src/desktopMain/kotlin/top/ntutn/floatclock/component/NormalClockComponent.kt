@@ -1,3 +1,5 @@
 package top.ntutn.floatclock.component
 
-class NormalClockComponent : ClockComponent()
+import top.ntutn.floatclock.storage.ThemeDataStore
+
+class NormalClockComponent(themeDataStore: ThemeDataStore) : ClockComponent(themeDataStore)
