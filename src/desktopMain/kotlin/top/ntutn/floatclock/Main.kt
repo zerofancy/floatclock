@@ -13,9 +13,12 @@ import top.ntutn.floatclock.component.AppComponent
 import top.ntutn.floatclock.storage.ConfigUtil
 import java.awt.*
 import java.awt.event.*
+import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
 import javax.swing.JDialog
 import javax.swing.JFrame
+import javax.swing.SwingUtilities
+
 
 object App
 
@@ -38,13 +41,13 @@ fun main(vararg args: String) {
                 it.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
             }
         }
-        showFloatingWindow(appComponent) {
+        showFloatingWindow(appIconImage, appComponent) {
             aboutDialogFactory().isVisible = true
         }
     }
 }
 
-fun showFloatingWindow(appComponent: AppComponent, showAboutWindowAction: () -> Unit) {
+private fun showFloatingWindow(appIconImage: BufferedImage, appComponent: AppComponent, showAboutWindowAction: () -> Unit) {
     JDialog().apply {
         val popupMenu = ContextMenu(
             themeAction = appComponent::changeTheme,
@@ -53,6 +56,8 @@ fun showFloatingWindow(appComponent: AppComponent, showAboutWindowAction: () -> 
             aboutAction = showAboutWindowAction,
             exitAction = ::dispose
         )
+
+        plantTrayIcon(appIconImage, appComponent, popupMenu)
 
         appComponent.floatWindowSize.subscribe {
             size = it
@@ -83,5 +88,44 @@ fun showFloatingWindow(appComponent: AppComponent, showAboutWindowAction: () -> 
         // 置顶显示
         isAlwaysOnTop = true
         isVisible = true
+    }
+}
+
+private fun JDialog.plantTrayIcon(
+    appIconImage: BufferedImage,
+    appComponent: AppComponent,
+    popupMenu: ContextMenu
+) {
+    if (SystemTray.isSupported()) {
+        val trayIcon = TrayIcon(appIconImage, "简易桌面悬浮时钟")
+        trayIcon.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent?) {
+                e ?: return
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    // 左键点击
+                    appComponent.themeComponent.value.changeColor(null)
+                    return
+                }
+                val pointerLocation = MouseInfo.getPointerInfo().location
+                popupMenu.location = pointerLocation
+                popupMenu.invoker = popupMenu
+                popupMenu.isVisible = true
+            }
+        })
+        trayIcon.isImageAutoSize = true
+        SystemTray.getSystemTray().add(trayIcon)
+
+        SwingUtilities.invokeLater {
+            val tray = SystemTray.getSystemTray()
+            val trayIconSize = tray.trayIconSize
+            trayIcon.image = appIconImage.getScaledInstance(trayIconSize.width, trayIconSize.height, Image.SCALE_DEFAULT)
+        }
+
+        addWindowListener(object : WindowAdapter() {
+            override fun windowClosed(e: WindowEvent?) {
+                super.windowClosed(e)
+                SystemTray.getSystemTray().remove(trayIcon)
+            }
+        })
     }
 }
