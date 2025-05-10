@@ -27,6 +27,8 @@ fun main() = application {
         title = BuildConfig.APP_NAME,
         state = state,
         undecorated = true,
+        transparent = true,
+        alwaysOnTop = true,
     ) {
         WindowDraggableArea() {
             var text by remember { mutableStateOf("00:00") }
