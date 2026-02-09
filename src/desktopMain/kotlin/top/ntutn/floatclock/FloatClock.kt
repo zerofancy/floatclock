@@ -2,6 +2,8 @@
 
 package top.ntutn.floatclock
 
+import androidx.compose.foundation.ContextMenuArea
+import androidx.compose.foundation.ContextMenuItem
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.material.Text
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +25,8 @@ import java.time.format.DateTimeFormatter
 
 fun main() = application {
     val state = rememberWindowState()
+    var showAboutDialog by remember { mutableStateOf(false) }
+    
     Window(
         onCloseRequest = ::exitApplication,
         title = BuildConfig.APP_NAME,
@@ -33,38 +37,61 @@ fun main() = application {
         focusable = false
     ) {
         WindowDraggableArea {
-            var text by remember { mutableStateOf("00:00") }
+            ContextMenuArea(
+                items = {
+                    listOf(
+                        ContextMenuItem("关于") {
+                            showAboutDialog = true
+                        },
+                        ContextMenuItem("退出") {
+                            exitApplication()
+                        }
+                    )
+                }
+            ) {
+                var text by remember { mutableStateOf("00:00") }
 
-            val density = LocalDensity.current
-            val scope = rememberCoroutineScope()
-            
-            Text(
-                text = text, 
-                fontSize = 48.sp,
-                onTextLayout = { result ->
-                    scope.launch {
-                        with(density) {
-                            state.size = state.size.copy(
-                                width = result.size.width.toDp(),
-                                height = result.size.height.toDp()
-                            )
+                val density = LocalDensity.current
+                val scope = rememberCoroutineScope()
+                
+                Text(
+                    text = text, 
+                    fontSize = 48.sp,
+                    onTextLayout = { result ->
+                        scope.launch {
+                            with(density) {
+                                state.size = state.size.copy(
+                                    width = result.size.width.toDp(),
+                                    height = result.size.height.toDp()
+                                )
+                            }
+                        }
+                    }
+                )
+                
+                LaunchedEffect(Unit) {
+                    scope.launch(Dispatchers.Default) {
+                        val formatter = DateTimeFormatter.ofPattern("HH:mm")
+                        try {
+                            while (true) {
+                                text = LocalTime.now().format(formatter)
+                                delay(500)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                     }
                 }
-            )
-            
-            LaunchedEffect(Unit) {
-                scope.launch(Dispatchers.Default) {
-                    val formatter = DateTimeFormatter.ofPattern("HH:mm")
-                    try {
-                        while (true) {
-                            text = LocalTime.now().format(formatter)
-                            delay(500)
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
+            }
+        }
+        
+        if (showAboutDialog) {
+            Window(
+                onCloseRequest = { showAboutDialog = false },
+                title = "关于 ${BuildConfig.APP_NAME}",
+                resizable = false
+            ) {
+                AboutContent()
             }
         }
     }
