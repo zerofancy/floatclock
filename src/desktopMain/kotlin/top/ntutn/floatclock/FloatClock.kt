@@ -18,7 +18,8 @@ import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
 fun main() = application {
     val state = rememberWindowState()
@@ -29,29 +30,39 @@ fun main() = application {
         undecorated = true,
         transparent = true,
         alwaysOnTop = true,
+        focusable = false
     ) {
-        WindowDraggableArea() {
+        WindowDraggableArea {
             var text by remember { mutableStateOf("00:00") }
 
             val density = LocalDensity.current
             val scope = rememberCoroutineScope()
-            Text(text, fontSize = 48.sp, onTextLayout = { result ->
-                scope.launch {
-                    delay(8)
-                    with(density) {
-                        state.size = state.size.copy(
-                            width = result.size.width.toDp(),
-                            height = result.size.height.toDp()
-                        )
+            
+            Text(
+                text = text, 
+                fontSize = 48.sp,
+                onTextLayout = { result ->
+                    scope.launch {
+                        with(density) {
+                            state.size = state.size.copy(
+                                width = result.size.width.toDp(),
+                                height = result.size.height.toDp()
+                            )
+                        }
                     }
                 }
-            })
+            )
+            
             LaunchedEffect(Unit) {
                 scope.launch(Dispatchers.Default) {
-                    val sdf = SimpleDateFormat("HH:mm")
-                    while (true) {
-                        text = sdf.format(System.currentTimeMillis())
-                        delay(500)
+                    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+                    try {
+                        while (true) {
+                            text = LocalTime.now().format(formatter)
+                            delay(500)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                 }
             }
