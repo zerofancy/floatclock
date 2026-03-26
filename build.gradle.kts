@@ -48,7 +48,7 @@ kotlin {
 
 compose.desktop {
     application {
-        mainClass = "top.ntutn.floatclock.MainKt"
+        mainClass = "top.ntutn.floatclock.FloatClock"
         nativeDistributions {
             modules("java.compiler", "java.instrument", "jdk.unsupported")
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
