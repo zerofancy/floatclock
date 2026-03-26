@@ -10,26 +10,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.DialogWindow
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.rememberDialogState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 
 fun main() = application {
-    val state = rememberWindowState()
-    Window(
-        onCloseRequest = ::exitApplication,
-        title = BuildConfig.APP_NAME,
-        state = state,
-        undecorated = true,
-        transparent = true,
-        alwaysOnTop = true,
-    ) {
+    val state = rememberDialogState(position = WindowPosition(Alignment.BottomEnd))
+    DialogWindow(onCloseRequest = ::exitApplication, transparent = true, undecorated = true, alwaysOnTop = true, resizable = false, state = state) {
         WindowDraggableArea() {
             var text by remember { mutableStateOf("00:00") }
 
