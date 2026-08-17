@@ -1,4 +1,37 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.gradle.api.tasks.Exec
+
+val generatedMacOSResources = layout.buildDirectory.dir("generated/macosResources")
+val macOSBridgeSource = layout.projectDirectory.file("src/desktopMain/native/macos/FloatClockMacOS.m")
+val macOSBridgeLibrary = generatedMacOSResources.map {
+    it.file("native/macos/libfloatclock_macos.dylib")
+}
+
+val compileMacOSBridge by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Compiles the AppKit bridge used to configure the FloatClock NSWindow."
+    onlyIf { System.getProperty("os.name").startsWith("Mac", ignoreCase = true) }
+
+    inputs.file(macOSBridgeSource)
+    outputs.file(macOSBridgeLibrary)
+
+    doFirst {
+        val outputFile = macOSBridgeLibrary.get().asFile
+        outputFile.parentFile.mkdirs()
+        val javaHome = System.getProperty("java.home")
+        commandLine(
+            "xcrun", "clang",
+            "-dynamiclib",
+            "-fobjc-arc",
+            "-fblocks",
+            "-framework", "AppKit",
+            "-I$javaHome/include",
+            "-I$javaHome/include/darwin",
+            macOSBridgeSource.asFile.absolutePath,
+            "-o", outputFile.absolutePath,
+        )
+    }
+}
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -26,6 +59,7 @@ kotlin {
     jvm("desktop")
     sourceSets {
         val desktopMain by getting
+        desktopMain.resources.srcDir(generatedMacOSResources)
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.foundation)
@@ -44,6 +78,10 @@ kotlin {
             implementation(libs.kotlinx.coroutines.swing)
         }
     }
+}
+
+tasks.named("desktopProcessResources") {
+    dependsOn(compileMacOSBridge)
 }
 
 compose.desktop {
