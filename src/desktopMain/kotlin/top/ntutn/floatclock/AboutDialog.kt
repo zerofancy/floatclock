@@ -33,6 +33,8 @@ fun AboutContent() {
             Spacer(modifier.height(8.dp))
             Text("${BuildConfig.APP_NAME} ${BuildConfig.APP_VERSION}", modifier = modifier)
             Spacer(modifier.height(8.dp))
+            Text("作者：归零幻想 (zerofancy)", modifier = modifier)
+            Spacer(modifier.height(8.dp))
             Text(buildAnnotatedString {
                 withLink(LinkAnnotation.Url(url)) {
                     append(url)

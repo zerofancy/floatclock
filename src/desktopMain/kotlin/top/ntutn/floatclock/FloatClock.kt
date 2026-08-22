@@ -17,11 +17,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.awt.ComposeDialog
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.DialogWindowScope
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.Window as ComposeWindow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -34,22 +40,44 @@ import java.awt.Toolkit
 import java.awt.Window
 import java.text.SimpleDateFormat
 import javax.swing.JDialog
+import javax.swing.JPopupMenu
+import javax.swing.SwingUtilities
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val OVERLAY_WINDOW_TITLE_PREFIX = "__floatclock_overlay__"
 private const val CLOCK_WINDOW_WIDTH = 180
 private const val CLOCK_WINDOW_HEIGHT = 80
+private val ClockTextColor = Color(0xFF1A3B32)
 private val isMacOS = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
 
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() = application {
     val graphicsConfigurations = remember { overlayGraphicsConfigurations() }
     var text by remember { mutableStateOf("00:00") }
+    var aboutVisible by remember { mutableStateOf(false) }
+    val contextMenu = remember {
+        JPopupMenu().apply {
+            add("关于").addActionListener { aboutVisible = true }
+            add("退出").addActionListener { exitApplication() }
+        }
+    }
 
     LaunchedEffect(Unit) {
         val dateFormat = SimpleDateFormat("HH:mm")
         while (true) {
             text = dateFormat.format(System.currentTimeMillis())
-            delay(500)
+            delay(500.milliseconds)
+        }
+    }
+
+    if (aboutVisible) {
+        ComposeWindow(
+            onCloseRequest = { aboutVisible = false },
+            title = "关于 ${BuildConfig.APP_NAME}",
+            state = rememberWindowState(width = 400.dp, height = 300.dp),
+            resizable = false,
+        ) {
+            AboutContent()
         }
     }
 
@@ -88,6 +116,7 @@ fun main() = application {
             FloatClockContent(
                 windowTitle = windowTitle,
                 text = text,
+                contextMenu = contextMenu,
             )
         }
     }
@@ -97,15 +126,37 @@ fun main() = application {
 private fun DialogWindowScope.FloatClockContent(
     windowTitle: String,
     text: String,
+    contextMenu: JPopupMenu,
 ) {
     val dialog = window
 
-    WindowDraggableArea {
-        Box(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(text, fontSize = 48.sp, maxLines = 1)
+    Box(
+        modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+                        event.changes.forEach { it.consume() }
+                        val pointerLocation = MouseInfo.getPointerInfo()?.location
+                        if (pointerLocation != null) {
+                            SwingUtilities.invokeLater {
+                                contextMenu.location = pointerLocation
+                                contextMenu.invoker = contextMenu
+                                contextMenu.isVisible = true
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    ) {
+        WindowDraggableArea {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text, fontSize = 48.sp, maxLines = 1, color = ClockTextColor)
+            }
         }
     }
 
