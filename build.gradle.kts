@@ -74,7 +74,6 @@ kotlin {
 
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
-            implementation("org.apache.commons:commons-lang3:3.12.0")
             implementation(libs.kotlinx.coroutines.swing)
         }
     }
