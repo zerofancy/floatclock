@@ -22,6 +22,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.platform.Font as PlatformFont
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
@@ -41,6 +46,7 @@ import java.awt.MouseInfo
 import java.awt.Toolkit
 import java.awt.Window
 import java.text.SimpleDateFormat
+import javax.swing.JCheckBoxMenuItem
 import javax.swing.JDialog
 import javax.swing.JMenu
 import javax.swing.JPopupMenu
@@ -52,9 +58,10 @@ import androidx.compose.ui.window.Window as ComposeWindow
 import java.awt.Color as AwtColor
 
 private const val OVERLAY_WINDOW_TITLE_PREFIX = "__floatclock_overlay__"
-private const val CLOCK_WINDOW_WIDTH = 180
+private const val CLOCK_WINDOW_WIDTH = 220
 private const val CLOCK_WINDOW_HEIGHT = 80
 private val DefaultClockColor = Color(0xFF1A3B32)
+private const val DEFAULT_STYLE = "digital"
 private val isMacOS = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
 
 // 限定在清晰、相对美观的色值范围内随机（HSB 色彩空间）
@@ -72,14 +79,34 @@ private val PRESET_CLOCK_COLORS = mapOf(
     "檀紫" to "#381924",
 )
 
+private fun loadDigitalFontFamily(): FontFamily? {
+    return runCatching {
+        val stream = Thread.currentThread().contextClassLoader.getResourceAsStream("digital-7.ttf")
+            ?: object {}::class.java.classLoader.getResourceAsStream("digital-7.ttf")
+            ?: return@runCatching null
+        val bytes = stream.use { it.readBytes() }
+        val font: Font = PlatformFont(
+            identity = "digital-7",
+            data = bytes,
+            weight = FontWeight.Normal,
+            style = FontStyle.Normal,
+        )
+        FontFamily(font)
+    }.getOrNull()
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() = application {
     val graphicsConfigurations = remember { overlayGraphicsConfigurations() }
     var text by remember { mutableStateOf("00:00") }
     var aboutVisible by remember { mutableStateOf(false) }
     var clockTextColor by remember { mutableStateOf(DefaultClockColor) }
+    var clockStyle by remember { mutableStateOf(DEFAULT_STYLE) }
     val themeDataStore = remember { DataStoreFactory().createThemeDataStore() }
     val scope = rememberCoroutineScope()
+    val digitalFontFamily = remember { loadDigitalFontFamily() }
+    val styleMenuDigitalItem = remember { JCheckBoxMenuItem("数码管样式") }
+    val styleMenuNormalItem = remember { JCheckBoxMenuItem("普通样式") }
 
     LaunchedEffect(Unit) {
         val dateFormat = SimpleDateFormat("HH:mm")
@@ -92,11 +119,34 @@ fun main() = application {
     LaunchedEffect(themeDataStore) {
         themeDataStore.themeData().collect { model ->
             clockTextColor = Color(AwtColor(model.colorR, model.colorG, model.colorB).rgb)
+            val resolvedStyle = if (model.theme == "digital" || model.theme == "normal") model.theme else DEFAULT_STYLE
+            if (clockStyle != resolvedStyle) {
+                clockStyle = resolvedStyle
+            }
         }
+    }
+
+    // 同步样式菜单项的勾选状态
+    LaunchedEffect(clockStyle) {
+        styleMenuDigitalItem.isSelected = clockStyle == "digital"
+        styleMenuNormalItem.isSelected = clockStyle == "normal"
     }
 
     val contextMenu = remember {
         JPopupMenu().apply {
+            JMenu("时钟样式").apply {
+                styleMenuDigitalItem.addActionListener {
+                    clockStyle = "digital"
+                    scope.launch { themeDataStore.updateTheme("digital") }
+                }
+                styleMenuNormalItem.addActionListener {
+                    clockStyle = "normal"
+                    scope.launch { themeDataStore.updateTheme("normal") }
+                }
+                add(styleMenuDigitalItem)
+                add(styleMenuNormalItem)
+            }.also { add(it) }
+            addSeparator()
             JMenu("选择颜色").apply {
                 PRESET_CLOCK_COLORS.forEach { (name, hex) ->
                     add(name).addActionListener {
@@ -164,6 +214,8 @@ fun main() = application {
                 windowTitle = windowTitle,
                 text = text,
                 textColor = clockTextColor,
+                digitalFontFamily = digitalFontFamily,
+                clockStyle = clockStyle,
                 contextMenu = contextMenu,
             )
         }
@@ -175,9 +227,12 @@ private fun DialogWindowScope.FloatClockContent(
     windowTitle: String,
     text: String,
     textColor: Color,
+    digitalFontFamily: FontFamily?,
+    clockStyle: String,
     contextMenu: JPopupMenu,
 ) {
     val dialog = window
+    val fontFamily = if (clockStyle == "digital" && digitalFontFamily != null) digitalFontFamily else null
 
     Box(
         modifier = Modifier.fillMaxSize().pointerInput(Unit) {
@@ -204,7 +259,13 @@ private fun DialogWindowScope.FloatClockContent(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text, fontSize = 48.sp, maxLines = 1, color = textColor)
+                Text(
+                    text,
+                    fontSize = 48.sp,
+                    maxLines = 1,
+                    color = textColor,
+                    fontFamily = fontFamily,
+                )
             }
         }
     }

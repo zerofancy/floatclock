@@ -29,4 +29,8 @@ class ThemeDataStore(private val produceFilePath: () -> String) {
         }
         it.copy(theme = newTheme)
     }
+
+    suspend fun updateTheme(theme: String) = db.updateData {
+        it.copy(theme = theme)
+    }
 }
