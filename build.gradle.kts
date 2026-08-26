@@ -102,6 +102,14 @@ compose.desktop {
                 menuGroup = "ntutn"
             }
         }
+        // Release minification / obfuscation rules.
+        // Without these, R8 may rewrite okio/datastore/jna/oshi classes in ways that cause
+        // VerifyError / UnsatisfiedLinkError at runtime (see compose-desktop.pro).
+        buildTypes.release.proguard {
+            isEnabled.set(true)
+            obfuscate.set(true)
+            configurationFiles.from(project.file("compose-desktop.pro"))
+        }
         args("--release")
         jvmArgs += listOf(
             "--add-opens=java.desktop/javax.swing=ALL-UNNAMED",
