@@ -102,6 +102,11 @@ compose.desktop {
             }
         }
         args("--release")
-        jvmArgs += listOf("--add-opens=java.desktop/javax.swing=ALL-UNNAMED")
+        jvmArgs += listOf(
+            "--add-opens=java.desktop/javax.swing=ALL-UNNAMED",
+            // Hide the Dock icon on macOS (equivalent to Info.plist LSUIElement). Applied before
+            // AWT/Toolkit init so no icon flashes. Ignored on other platforms.
+            "-Dapple.awt.UIElement=true",
+        )
     }
 }

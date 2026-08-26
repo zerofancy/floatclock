@@ -96,7 +96,14 @@ private fun loadDigitalFontFamily(): FontFamily? {
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
-fun main() = application {
+fun main() {
+    // Hide the Dock icon on macOS. Must be set before AWT/Toolkit initializes so no icon flashes.
+    // Complements the same flag in build.gradle.kts jvmArgs for launches that bypass Gradle
+    // (e.g. running main() directly from an IDE). No-op on other platforms.
+    if (isMacOS) {
+        System.setProperty("apple.awt.UIElement", "true")
+    }
+    application {
     val graphicsConfigurations = remember { overlayGraphicsConfigurations() }
     var text by remember { mutableStateOf("00:00") }
     var aboutVisible by remember { mutableStateOf(false) }
@@ -219,6 +226,7 @@ fun main() = application {
                 contextMenu = contextMenu,
             )
         }
+    }
     }
 }
 
