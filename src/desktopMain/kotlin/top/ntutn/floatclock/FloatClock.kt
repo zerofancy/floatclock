@@ -3,12 +3,17 @@
 package top.ntutn.floatclock
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +43,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.ntutn.floatclock.macos.MacOSWindowBridge
+import top.ntutn.floatclock.net.NetSpeedMonitor
+import top.ntutn.floatclock.net.humanBps
 import top.ntutn.floatclock.storage.DataStoreFactory
 import java.awt.Dimension
 import java.awt.GraphicsConfiguration
@@ -60,6 +67,7 @@ import java.awt.Color as AwtColor
 private const val OVERLAY_WINDOW_TITLE_PREFIX = "__floatclock_overlay__"
 private const val CLOCK_WINDOW_WIDTH = 220
 private const val CLOCK_WINDOW_HEIGHT = 80
+private const val NET_SPEED_EXTRA_HEIGHT_PX = 34
 private val DefaultClockColor = Color(0xFF1A3B32)
 private const val DEFAULT_STYLE = "digital"
 private val isMacOS = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
@@ -95,6 +103,9 @@ private fun loadDigitalFontFamily(): FontFamily? {
     }.getOrNull()
 }
 
+private fun clockWindowHeight(showNetSpeed: Boolean): Int =
+    CLOCK_WINDOW_HEIGHT + if (showNetSpeed) NET_SPEED_EXTRA_HEIGHT_PX else 0
+
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     // Hide the Dock icon on macOS. Must be set before AWT/Toolkit initializes so no icon flashes.
@@ -104,129 +115,151 @@ fun main() {
         System.setProperty("apple.awt.UIElement", "true")
     }
     application {
-    val graphicsConfigurations = remember { overlayGraphicsConfigurations() }
-    var text by remember { mutableStateOf("00:00") }
-    var aboutVisible by remember { mutableStateOf(false) }
-    var clockTextColor by remember { mutableStateOf(DefaultClockColor) }
-    var clockStyle by remember { mutableStateOf(DEFAULT_STYLE) }
-    val themeDataStore = remember { DataStoreFactory().createThemeDataStore() }
-    val scope = rememberCoroutineScope()
-    val digitalFontFamily = remember { loadDigitalFontFamily() }
-    val styleMenuDigitalItem = remember { JCheckBoxMenuItem("数码管样式") }
-    val styleMenuNormalItem = remember { JCheckBoxMenuItem("普通样式") }
+        val graphicsConfigurations = remember { overlayGraphicsConfigurations() }
+        var text by remember { mutableStateOf("00:00") }
+        var aboutVisible by remember { mutableStateOf(false) }
+        var clockTextColor by remember { mutableStateOf(DefaultClockColor) }
+        var clockStyle by remember { mutableStateOf(DEFAULT_STYLE) }
+        var showNetSpeed by remember { mutableStateOf(false) }
+        val themeDataStore = remember { DataStoreFactory().createThemeDataStore() }
+        val scope = rememberCoroutineScope()
+        val digitalFontFamily = remember { loadDigitalFontFamily() }
+        val styleMenuDigitalItem = remember { JCheckBoxMenuItem("数码管样式") }
+        val styleMenuNormalItem = remember { JCheckBoxMenuItem("普通样式") }
+        val showNetSpeedMenuItem = remember { JCheckBoxMenuItem("显示网速") }
 
-    LaunchedEffect(Unit) {
-        val dateFormat = SimpleDateFormat("HH:mm")
-        while (true) {
-            text = dateFormat.format(System.currentTimeMillis())
-            delay(500.milliseconds)
-        }
-    }
-
-    LaunchedEffect(themeDataStore) {
-        themeDataStore.themeData().collect { model ->
-            clockTextColor = Color(AwtColor(model.colorR, model.colorG, model.colorB).rgb)
-            val resolvedStyle = if (model.theme == "digital" || model.theme == "normal") model.theme else DEFAULT_STYLE
-            if (clockStyle != resolvedStyle) {
-                clockStyle = resolvedStyle
+        LaunchedEffect(Unit) {
+            val dateFormat = SimpleDateFormat("HH:mm")
+            while (true) {
+                text = dateFormat.format(System.currentTimeMillis())
+                delay(500.milliseconds)
             }
         }
-    }
 
-    // 同步样式菜单项的勾选状态
-    LaunchedEffect(clockStyle) {
-        styleMenuDigitalItem.isSelected = clockStyle == "digital"
-        styleMenuNormalItem.isSelected = clockStyle == "normal"
-    }
+        LaunchedEffect(themeDataStore) {
+            themeDataStore.themeData().collect { model ->
+                clockTextColor = Color(AwtColor(model.colorR, model.colorG, model.colorB).rgb)
+                val resolvedStyle =
+                    if (model.theme == "digital" || model.theme == "normal") model.theme else DEFAULT_STYLE
+                if (clockStyle != resolvedStyle) {
+                    clockStyle = resolvedStyle
+                }
+                if (showNetSpeed != model.showNetSpeed) {
+                    showNetSpeed = model.showNetSpeed
+                }
+            }
+        }
 
-    val contextMenu = remember {
-        JPopupMenu().apply {
-            JMenu("时钟样式").apply {
-                styleMenuDigitalItem.addActionListener {
-                    clockStyle = "digital"
-                    scope.launch { themeDataStore.updateTheme("digital") }
-                }
-                styleMenuNormalItem.addActionListener {
-                    clockStyle = "normal"
-                    scope.launch { themeDataStore.updateTheme("normal") }
-                }
-                add(styleMenuDigitalItem)
-                add(styleMenuNormalItem)
-            }.also { add(it) }
-            addSeparator()
-            JMenu("选择颜色").apply {
-                PRESET_CLOCK_COLORS.forEach { (name, hex) ->
-                    add(name).addActionListener {
-                        val awtColor = AwtColor.decode(hex)
+        // 同步样式菜单项的勾选状态
+        LaunchedEffect(clockStyle) {
+            styleMenuDigitalItem.isSelected = clockStyle == "digital"
+            styleMenuNormalItem.isSelected = clockStyle == "normal"
+        }
+
+        LaunchedEffect(showNetSpeed) {
+            showNetSpeedMenuItem.isSelected = showNetSpeed
+        }
+
+        val contextMenu = remember {
+            JPopupMenu().apply {
+                JMenu("时钟样式").apply {
+                    styleMenuDigitalItem.addActionListener {
+                        clockStyle = "digital"
+                        scope.launch { themeDataStore.updateTheme("digital") }
+                    }
+                    styleMenuNormalItem.addActionListener {
+                        clockStyle = "normal"
+                        scope.launch { themeDataStore.updateTheme("normal") }
+                    }
+                    add(styleMenuDigitalItem)
+                    add(styleMenuNormalItem)
+                }.also { add(it) }
+                addSeparator()
+                JMenu("选择颜色").apply {
+                    PRESET_CLOCK_COLORS.forEach { (name, hex) ->
+                        add(name).addActionListener {
+                            val awtColor = AwtColor.decode(hex)
+                            clockTextColor = Color(awtColor.rgb)
+                            scope.launch { themeDataStore.updateColor(awtColor) }
+                        }
+                    }
+                    addSeparator()
+                    add("随机").addActionListener {
+                        val awtColor = randomPleasingColor(clockTextColor)
                         clockTextColor = Color(awtColor.rgb)
                         scope.launch { themeDataStore.updateColor(awtColor) }
                     }
-                }
+                }.also { add(it) }
                 addSeparator()
-                add("随机").addActionListener {
-                    val awtColor = randomPleasingColor(clockTextColor)
-                    clockTextColor = Color(awtColor.rgb)
-                    scope.launch { themeDataStore.updateColor(awtColor) }
+                showNetSpeedMenuItem.addActionListener {
+                    scope.launch { themeDataStore.toggleShowNetSpeed() }
                 }
-            }.also { add(it) }
-            add("关于").addActionListener { aboutVisible = true }
-            add("退出").addActionListener { exitApplication() }
+                add(showNetSpeedMenuItem)
+                addSeparator()
+                add("关于").addActionListener { aboutVisible = true }
+                add("退出").addActionListener { exitApplication() }
+            }
         }
-    }
 
-    if (aboutVisible) {
-        ComposeWindow(
-            onCloseRequest = { aboutVisible = false },
-            title = "关于 ${BuildConfig.APP_NAME}",
-            state = rememberWindowState(width = 400.dp, height = 300.dp),
-            resizable = false,
-        ) {
-            AboutContent()
+        if (aboutVisible) {
+            ComposeWindow(
+                onCloseRequest = { aboutVisible = false },
+                title = "关于 ${BuildConfig.APP_NAME}",
+                state = rememberWindowState(width = 400.dp, height = 300.dp),
+                resizable = false,
+                alwaysOnTop = true,
+            ) {
+                AboutContent()
+            }
         }
-    }
 
-    graphicsConfigurations.forEachIndexed { index, graphicsConfiguration ->
-        val windowTitle = "$OVERLAY_WINDOW_TITLE_PREFIX$index"
-        DialogWindow(
-            create = {
-                ComposeDialog(graphicsConfiguration = graphicsConfiguration).apply {
-                    // POPUP is created as a non-activating NSPanel by OpenJDK on macOS.
-                    type = Window.Type.POPUP
-                    title = windowTitle
-                    isUndecorated = true
-                    isTransparent = true
-                    isResizable = false
-                    focusableWindowState = false
-                    isAutoRequestFocus = false
-                    isAlwaysOnTop = true
-                    defaultCloseOperation = JDialog.DISPOSE_ON_CLOSE
+        graphicsConfigurations.forEachIndexed { index, graphicsConfiguration ->
+            val windowTitle = "$OVERLAY_WINDOW_TITLE_PREFIX$index"
+            DialogWindow(
+                create = {
+                    ComposeDialog(graphicsConfiguration = graphicsConfiguration).apply {
+                        // POPUP is created as a non-activating NSPanel by OpenJDK on macOS.
+                        type = Window.Type.POPUP
+                        title = windowTitle
+                        isUndecorated = true
+                        isTransparent = true
+                        isResizable = false
+                        focusableWindowState = false
+                        isAutoRequestFocus = false
+                        isAlwaysOnTop = true
+                        defaultCloseOperation = JDialog.DISPOSE_ON_CLOSE
 
-                    // Ensure the native peer is created only after all immutable window
-                    // properties (especially type) have been applied.
-                    // HH:mm has a fixed shape. Keep a stable window size instead of feeding
-                    // a constrained Text layout result back into the native window size.
-                    preferredSize = Dimension(CLOCK_WINDOW_WIDTH, CLOCK_WINDOW_HEIGHT)
-                    pack()
-                    preferredSize = null
-                    setSize(CLOCK_WINDOW_WIDTH, CLOCK_WINDOW_HEIGHT)
-                    moveToScreenBottomEnd(this, graphicsConfiguration)
-                }
-            },
-            dispose = ComposeDialog::dispose,
-            update = { dialog ->
-                dialog.isAlwaysOnTop = true
-            },
-        ) {
-            FloatClockContent(
-                windowTitle = windowTitle,
-                text = text,
-                textColor = clockTextColor,
-                digitalFontFamily = digitalFontFamily,
-                clockStyle = clockStyle,
-                contextMenu = contextMenu,
-            )
+                        // Ensure the native peer is created only after all immutable window
+                        // properties (especially type) have been applied.
+                        val h = clockWindowHeight(showNetSpeed)
+                        preferredSize = Dimension(CLOCK_WINDOW_WIDTH, h)
+                        pack()
+                        preferredSize = null
+                        setSize(CLOCK_WINDOW_WIDTH, h)
+                        moveToScreenBottomEnd(this, graphicsConfiguration)
+                    }
+                },
+                dispose = ComposeDialog::dispose,
+                update = { dialog ->
+                    dialog.isAlwaysOnTop = true
+                    val targetH = clockWindowHeight(showNetSpeed)
+                    if (dialog.height != targetH) {
+                        dialog.setSize(CLOCK_WINDOW_WIDTH, targetH)
+                        moveToScreenBottomEnd(dialog, graphicsConfiguration)
+                    }
+                },
+            ) {
+                FloatClockContent(
+                    windowTitle = windowTitle,
+                    text = text,
+                    textColor = clockTextColor,
+                    digitalFontFamily = digitalFontFamily,
+                    clockStyle = clockStyle,
+                    contextMenu = contextMenu,
+                    showNetSpeed = showNetSpeed,
+                )
+            }
         }
-    }
     }
 }
 
@@ -238,9 +271,18 @@ private fun DialogWindowScope.FloatClockContent(
     digitalFontFamily: FontFamily?,
     clockStyle: String,
     contextMenu: JPopupMenu,
+    showNetSpeed: Boolean,
 ) {
     val dialog = window
     val fontFamily = if (clockStyle == "digital" && digitalFontFamily != null) digitalFontFamily else null
+
+    val netSpeedMonitor = remember { NetSpeedMonitor(1000) }
+    val cs = rememberCoroutineScope()
+    DisposableEffect(Unit) {
+        netSpeedMonitor.start(cs)
+        onDispose { netSpeedMonitor.stop() }
+    }
+    val netSpeed by netSpeedMonitor.speed.collectAsState()
 
     Box(
         modifier = Modifier.fillMaxSize().pointerInput(Unit) {
@@ -267,13 +309,25 @@ private fun DialogWindowScope.FloatClockContent(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text,
-                    fontSize = 48.sp,
-                    maxLines = 1,
-                    color = textColor,
-                    fontFamily = fontFamily,
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text,
+                        fontSize = 48.sp,
+                        maxLines = 1,
+                        color = textColor,
+                        fontFamily = fontFamily,
+                    )
+                    if (showNetSpeed) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = "↓ ${netSpeed.downBytesPerSec.humanBps()}   ↑ ${netSpeed.upBytesPerSec.humanBps()}",
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            color = textColor,
+                            fontFamily = fontFamily,
+                        )
+                    }
+                }
             }
         }
     }

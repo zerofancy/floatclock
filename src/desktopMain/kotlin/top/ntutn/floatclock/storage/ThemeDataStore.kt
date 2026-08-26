@@ -33,4 +33,12 @@ class ThemeDataStore(private val produceFilePath: () -> String) {
     suspend fun updateTheme(theme: String) = db.updateData {
         it.copy(theme = theme)
     }
+
+    suspend fun updateShowNetSpeed(show: Boolean) = db.updateData {
+        it.copy(showNetSpeed = show)
+    }
+
+    suspend fun toggleShowNetSpeed() = db.updateData {
+        it.copy(showNetSpeed = !it.showNetSpeed)
+    }
 }

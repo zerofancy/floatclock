@@ -6,7 +6,13 @@ import okio.BufferedSink
 import okio.BufferedSource
 
 @Serializable
-data class ThemeModel(val theme: String, val colorR: Int, val colorG: Int, val colorB: Int) {
+data class ThemeModel(
+    val theme: String,
+    val colorR: Int,
+    val colorG: Int,
+    val colorB: Int,
+    val showNetSpeed: Boolean = false,
+) {
     object Serializer: OkioSerializer<ThemeModel> {
         private val jsonClient = Json {
             ignoreUnknownKeys = true
@@ -14,7 +20,7 @@ data class ThemeModel(val theme: String, val colorR: Int, val colorG: Int, val c
             explicitNulls = false     // 不序列化null值字段
         }
 
-        override val defaultValue: ThemeModel = ThemeModel("digital", 0x1A, 0x3B, 0x32)
+        override val defaultValue: ThemeModel = ThemeModel("digital", 0x1A, 0x3B, 0x32, false)
 
         override suspend fun readFrom(source: BufferedSource): ThemeModel {
             return jsonClient.decodeFromString(source.readUtf8())
