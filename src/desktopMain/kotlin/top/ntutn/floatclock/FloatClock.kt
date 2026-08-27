@@ -127,6 +127,7 @@ fun main() {
         val styleMenuDigitalItem = remember { JCheckBoxMenuItem("数码管样式") }
         val styleMenuNormalItem = remember { JCheckBoxMenuItem("普通样式") }
         val showNetSpeedMenuItem = remember { JCheckBoxMenuItem("显示网速") }
+        val loginItemMenuItem = remember { JCheckBoxMenuItem("开机启动") }
 
         LaunchedEffect(Unit) {
             val dateFormat = SimpleDateFormat("HH:mm")
@@ -158,6 +159,17 @@ fun main() {
 
         LaunchedEffect(showNetSpeed) {
             showNetSpeedMenuItem.isSelected = showNetSpeed
+        }
+
+        // 检测当前是否已设置开机启动，同步复选项状态
+        LaunchedEffect(Unit) {
+            if (isMacOS) {
+                val enabled = withContext(Dispatchers.Default) {
+                    MacOSWindowBridge.isLoginItemEnabled()
+                }
+                System.err.println("[FloatClock] Initial login item state: enabled=$enabled")
+                loginItemMenuItem.isSelected = enabled
+            }
         }
 
         val contextMenu = remember {
@@ -195,6 +207,23 @@ fun main() {
                     scope.launch { themeDataStore.toggleShowNetSpeed() }
                 }
                 add(showNetSpeedMenuItem)
+                if (isMacOS) {
+                    addSeparator()
+                    loginItemMenuItem.addActionListener {
+                        // JCheckBoxMenuItem auto-toggles on click; isSelected is now the NEW desired state.
+                        val target = loginItemMenuItem.isSelected
+                        scope.launch {
+                            val success = withContext(Dispatchers.Default) {
+                                MacOSWindowBridge.setLoginItemEnabled(target)
+                            }
+                            if (!success) {
+                                // Revert the auto-toggle if the operation failed.
+                                loginItemMenuItem.isSelected = !target
+                            }
+                        }
+                    }
+                    add(loginItemMenuItem)
+                }
                 addSeparator()
                 add("关于").addActionListener { aboutVisible = true }
                 add("退出").addActionListener { exitApplication() }

@@ -25,6 +25,7 @@ val compileMacOSBridge by tasks.registering(Exec::class) {
             "-fobjc-arc",
             "-fblocks",
             "-framework", "AppKit",
+            "-framework", "ServiceManagement",
             "-I$javaHome/include",
             "-I$javaHome/include/darwin",
             macOSBridgeSource.asFile.absolutePath,

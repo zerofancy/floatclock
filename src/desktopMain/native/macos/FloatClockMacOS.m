@@ -1,5 +1,7 @@
 #import <AppKit/AppKit.h>
+#import <ServiceManagement/ServiceManagement.h>
 #import <jni.h>
+#import <unistd.h>
 
 static NSString *FloatClockStringFromJString(JNIEnv *env, jstring value) {
     if (value == NULL) {
@@ -52,6 +54,28 @@ static BOOL FloatClockConfigureWindow(NSString *windowTitle) {
     return NO;
 }
 
+#pragma mark - Login Item (SMAppService, macOS 13+)
+
+static BOOL FloatClockIsLoginItemEnabledSM(void) {
+    if (@available(macOS 13.0, *)) {
+        SMAppServiceStatus status = [SMAppService mainAppService].status;
+        return status == SMAppServiceStatusEnabled;
+    }
+    return NO;
+}
+
+static BOOL FloatClockSetLoginItemEnabledSM(BOOL enabled, NSError **error) {
+    if (@available(macOS 13.0, *)) {
+        SMAppService *service = [SMAppService mainAppService];
+        if (enabled) {
+            return [service registerAndReturnError:error];
+        } else {
+            return [service unregisterAndReturnError:error];
+        }
+    }
+    return NO;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_top_ntutn_floatclock_macos_MacOSWindowBridge_configureWindow(
     JNIEnv *env,
@@ -76,4 +100,49 @@ Java_top_ntutn_floatclock_macos_MacOSWindowBridge_configureWindow(
     }
 
     return configured ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_top_ntutn_floatclock_macos_MacOSWindowBridge_isLoginItemEnabledSMNative(
+    JNIEnv *env,
+    jobject receiver
+) {
+    (void)env;
+    (void)receiver;
+    __block BOOL enabled = NO;
+    void (^check)(void) = ^{
+        enabled = FloatClockIsLoginItemEnabledSM();
+    };
+    if (NSThread.isMainThread) {
+        check();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), check);
+    }
+    return enabled ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_top_ntutn_floatclock_macos_MacOSWindowBridge_setLoginItemEnabledSMNative(
+    JNIEnv *env,
+    jobject receiver,
+    jboolean enabled
+) {
+    (void)env;
+    (void)receiver;
+    __block BOOL success = NO;
+    void (^set)(void) = ^{
+        NSError *error = nil;
+        success = FloatClockSetLoginItemEnabledSM(enabled == JNI_TRUE, &error);
+        if (!success && error) {
+            fprintf(stderr, "[FloatClock] SMAppService %@ failed: %s\n",
+                    (enabled == JNI_TRUE) ? @"register" : @"unregister",
+                    error.localizedDescription.UTF8String ?: "unknown error");
+        }
+    };
+    if (NSThread.isMainThread) {
+        set();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), set);
+    }
+    return success ? JNI_TRUE : JNI_FALSE;
 }
