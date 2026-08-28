@@ -39,8 +39,10 @@ import androidx.compose.ui.window.DialogWindowScope
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.swing.Swing
 import kotlinx.coroutines.withContext
 import top.ntutn.floatclock.macos.MacOSWindowBridge
 import top.ntutn.floatclock.net.NetSpeedMonitor
@@ -58,6 +60,8 @@ import javax.swing.JDialog
 import javax.swing.JMenu
 import javax.swing.JPopupMenu
 import javax.swing.SwingUtilities
+import javax.swing.event.PopupMenuEvent
+import javax.swing.event.PopupMenuListener
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
@@ -65,6 +69,8 @@ import androidx.compose.ui.window.Window as ComposeWindow
 import java.awt.Color as AwtColor
 
 private const val OVERLAY_WINDOW_TITLE_PREFIX = "__floatclock_overlay__"
+private const val MENU_DISMISS_TIMEOUT_MS = 1200L
+private const val MENU_DISMISS_POLL_MS = 100L
 private const val CLOCK_WINDOW_WIDTH = 220
 private const val CLOCK_WINDOW_HEIGHT = 80
 private const val NET_SPEED_EXTRA_HEIGHT_PX = 34
@@ -227,6 +233,46 @@ fun main() {
                 addSeparator()
                 add("关于").addActionListener { aboutVisible = true }
                 add("退出").addActionListener { exitApplication() }
+
+                // 鼠标移出悬浮窗与菜单区域超过 1.2s 后自动关闭上下文菜单。
+                // 应用为 LSUIElement 且悬浮窗 focusableWindowState=false，
+                // 无法通过焦点丢失事件检测外部点击，故采用位置超时方案。
+                val menu = this
+                var dismissJob: Job? = null
+
+                addPopupMenuListener(object : PopupMenuListener {
+                    override fun popupMenuWillBecomeVisible(e: PopupMenuEvent?) {
+                        dismissJob = scope.launch {
+                            var outsideSince: Long? = null
+                            while (menu.isVisible) {
+                                delay(MENU_DISMISS_POLL_MS)
+                                val inSafeZone = withContext(Dispatchers.Swing) {
+                                    isPointerInAnyAppWindow()
+                                }
+                                if (inSafeZone) {
+                                    outsideSince = null
+                                } else {
+                                    val now = System.currentTimeMillis()
+                                    if (outsideSince == null) {
+                                        outsideSince = now
+                                    } else if (now - outsideSince >= MENU_DISMISS_TIMEOUT_MS) {
+                                        withContext(Dispatchers.Swing) {
+                                            if (menu.isVisible) menu.isVisible = false
+                                        }
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    override fun popupMenuWillBecomeInvisible(e: PopupMenuEvent?) {
+                        dismissJob?.cancel()
+                        dismissJob = null
+                    }
+
+                    override fun popupMenuCanceled(e: PopupMenuEvent?) {}
+                })
             }
         }
 
@@ -419,4 +465,13 @@ private fun randomPleasingColor(currentColor: Color): AwtColor {
 private fun hueDistance(a: Float, b: Float): Float {
     val d = abs(a - b)
     return minOf(d, 1f - d)
+}
+
+/**
+ * 鼠标指针是否落在本应用任一可见窗口内（悬浮窗、上下文菜单及其子菜单等）。
+ * 用于判断鼠标是否离开了菜单交互区域。必须在 EDT 上调用。
+ */
+private fun isPointerInAnyAppWindow(): Boolean {
+    val pointerLoc = MouseInfo.getPointerInfo()?.location ?: return false
+    return Window.getWindows().any { it.isShowing && it.bounds.contains(pointerLoc) }
 }
