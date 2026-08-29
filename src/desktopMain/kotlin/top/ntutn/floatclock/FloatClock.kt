@@ -48,6 +48,7 @@ import top.ntutn.floatclock.macos.MacOSWindowBridge
 import top.ntutn.floatclock.net.NetSpeedMonitor
 import top.ntutn.floatclock.net.humanBps
 import top.ntutn.floatclock.storage.DataStoreFactory
+import top.ntutn.floatclock.AutoStart
 import java.awt.Dimension
 import java.awt.GraphicsConfiguration
 import java.awt.GraphicsEnvironment
@@ -77,6 +78,8 @@ private const val NET_SPEED_EXTRA_HEIGHT_PX = 34
 private val DefaultClockColor = Color(0xFF1A3B32)
 private const val DEFAULT_STYLE = "digital"
 private val isMacOS = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
+private val isWindows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+private val isAutoStartSupported: Boolean get() = AutoStart.isSupported()
 
 // 限定在清晰、相对美观的色值范围内随机（HSB 色彩空间）
 private const val MIN_HUE_DISTANCE = 0.08f
@@ -169,11 +172,11 @@ fun main() {
 
         // 检测当前是否已设置开机启动，同步复选项状态
         LaunchedEffect(Unit) {
-            if (isMacOS) {
+            if (isAutoStartSupported) {
                 val enabled = withContext(Dispatchers.Default) {
-                    MacOSWindowBridge.isLoginItemEnabled()
+                    AutoStart.isEnabled()
                 }
-                System.err.println("[FloatClock] Initial login item state: enabled=$enabled")
+                System.err.println("[FloatClock] Initial autostart state: enabled=$enabled")
                 loginItemMenuItem.isSelected = enabled
             }
         }
@@ -213,14 +216,14 @@ fun main() {
                     scope.launch { themeDataStore.toggleShowNetSpeed() }
                 }
                 add(showNetSpeedMenuItem)
-                if (isMacOS) {
+                if (isAutoStartSupported) {
                     addSeparator()
                     loginItemMenuItem.addActionListener {
                         // JCheckBoxMenuItem auto-toggles on click; isSelected is now the NEW desired state.
                         val target = loginItemMenuItem.isSelected
                         scope.launch {
                             val success = withContext(Dispatchers.Default) {
-                                MacOSWindowBridge.setLoginItemEnabled(target)
+                                AutoStart.setEnabled(target)
                             }
                             if (!success) {
                                 // Revert the auto-toggle if the operation failed.
