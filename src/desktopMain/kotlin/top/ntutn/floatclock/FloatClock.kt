@@ -27,11 +27,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.platform.Font as PlatformFont
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
@@ -48,7 +48,6 @@ import top.ntutn.floatclock.macos.MacOSWindowBridge
 import top.ntutn.floatclock.net.NetSpeedMonitor
 import top.ntutn.floatclock.net.humanBps
 import top.ntutn.floatclock.storage.DataStoreFactory
-import top.ntutn.floatclock.AutoStart
 import java.awt.Dimension
 import java.awt.GraphicsConfiguration
 import java.awt.GraphicsEnvironment
@@ -66,15 +65,13 @@ import javax.swing.event.PopupMenuListener
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
+import androidx.compose.ui.text.platform.Font as PlatformFont
 import androidx.compose.ui.window.Window as ComposeWindow
 import java.awt.Color as AwtColor
 
 private const val OVERLAY_WINDOW_TITLE_PREFIX = "__floatclock_overlay__"
 private const val MENU_DISMISS_TIMEOUT_MS = 1200L
 private const val MENU_DISMISS_POLL_MS = 100L
-private const val CLOCK_WINDOW_WIDTH = 220
-private const val CLOCK_WINDOW_HEIGHT = 80
-private const val NET_SPEED_EXTRA_HEIGHT_PX = 34
 private val DefaultClockColor = Color(0xFF1A3B32)
 private const val DEFAULT_STYLE = "digital"
 private val isMacOS = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
@@ -111,9 +108,6 @@ private fun loadDigitalFontFamily(): FontFamily? {
         FontFamily(font)
     }.getOrNull()
 }
-
-private fun clockWindowHeight(showNetSpeed: Boolean): Int =
-    CLOCK_WINDOW_HEIGHT + if (showNetSpeed) NET_SPEED_EXTRA_HEIGHT_PX else 0
 
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
@@ -293,6 +287,14 @@ fun main() {
 
         graphicsConfigurations.forEachIndexed { index, graphicsConfiguration ->
             val windowTitle = "$OVERLAY_WINDOW_TITLE_PREFIX$index"
+
+            // Both width and height: settle once per configuration change (clockStyle / showNetSpeed).
+            // Use an initial large-enough size so the window is correct on the first frame.
+            var desiredWindowHeight by remember { mutableStateOf(180) }
+            var desiredWindowWidth by remember { mutableStateOf(260) }
+            var sizeSettled by remember { mutableStateOf(false) }
+            LaunchedEffect(showNetSpeed, clockStyle) { sizeSettled = false }
+
             DialogWindow(
                 create = {
                     ComposeDialog(graphicsConfiguration = graphicsConfiguration).apply {
@@ -309,20 +311,19 @@ fun main() {
 
                         // Ensure the native peer is created only after all immutable window
                         // properties (especially type) have been applied.
-                        val h = clockWindowHeight(showNetSpeed)
-                        preferredSize = Dimension(CLOCK_WINDOW_WIDTH, h)
+                        preferredSize = Dimension(desiredWindowWidth, desiredWindowHeight)
                         pack()
                         preferredSize = null
-                        setSize(CLOCK_WINDOW_WIDTH, h)
+                        setSize(desiredWindowWidth, desiredWindowHeight)
                         moveToScreenBottomEnd(this, graphicsConfiguration)
                     }
                 },
                 dispose = ComposeDialog::dispose,
                 update = { dialog ->
                     dialog.isAlwaysOnTop = true
-                    val targetH = clockWindowHeight(showNetSpeed)
-                    if (dialog.height != targetH) {
-                        dialog.setSize(CLOCK_WINDOW_WIDTH, targetH)
+                    if (dialog.height != desiredWindowHeight || dialog.width != desiredWindowWidth) {
+                        println("set $desiredWindowWidth, $desiredWindowHeight")
+                        dialog.setSize(desiredWindowWidth, desiredWindowHeight)
                         moveToScreenBottomEnd(dialog, graphicsConfiguration)
                     }
                 },
@@ -335,6 +336,13 @@ fun main() {
                     clockStyle = clockStyle,
                     contextMenu = contextMenu,
                     showNetSpeed = showNetSpeed,
+                    onContentSizeChanged = { w, h ->
+                        if (!sizeSettled && w > 0 && h > 0) {
+                            sizeSettled = true
+                            desiredWindowWidth = w
+                            desiredWindowHeight = h
+                        }
+                    },
                 )
             }
         }
@@ -350,6 +358,7 @@ private fun DialogWindowScope.FloatClockContent(
     clockStyle: String,
     contextMenu: JPopupMenu,
     showNetSpeed: Boolean,
+    onContentSizeChanged: (width: Int, height: Int) -> Unit = { _, _ -> },
 ) {
     val dialog = window
     val fontFamily = if (clockStyle == "digital" && digitalFontFamily != null) digitalFontFamily else null
@@ -363,7 +372,9 @@ private fun DialogWindowScope.FloatClockContent(
     val netSpeed by netSpeedMonitor.speed.collectAsState()
 
     Box(
-        modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent()
@@ -381,10 +392,16 @@ private fun DialogWindowScope.FloatClockContent(
                 }
             }
         },
+        contentAlignment = Alignment.Center
     ) {
         WindowDraggableArea {
             Box(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    //.background(Color(0x55000000))
+                    .onSizeChanged { size ->
+                        if (size.height > 0) onContentSizeChanged(size.width, size.height)
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -396,7 +413,7 @@ private fun DialogWindowScope.FloatClockContent(
                         fontFamily = fontFamily,
                     )
                     if (showNetSpeed) {
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(if (clockStyle == "digital") 8.dp else 2.dp))
                         Text(
                             text = "↓ ${netSpeed.downBytesPerSec.humanBps()}   ↑ ${netSpeed.upBytesPerSec.humanBps()}",
                             fontSize = 14.sp,
