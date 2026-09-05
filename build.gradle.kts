@@ -94,7 +94,7 @@ compose.desktop {
             packageName = "floatclock"
             packageVersion = version.toString()
             linux {
-                iconFile.set(project.file("src/desktopMain/resources/clock.png"))
+                iconFile.set(project.file("src/desktopMain/composeResources/drawable/clock.png"))
             }
             windows {
                 shortcut = true
