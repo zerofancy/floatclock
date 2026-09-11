@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
 import org.gradle.api.tasks.Exec
 
 val generatedMacOSResources = layout.buildDirectory.dir("generated/macosResources")
@@ -85,6 +86,14 @@ tasks.named("desktopProcessResources") {
     dependsOn(compileMacOSBridge)
 }
 
+tasks.withType<AbstractJPackageTask>().configureEach {
+    if (targetFormat == TargetFormat.Dmg) {
+        // Compose omits --icon when packaging an existing .app image;
+        // jpackage also needs it here to customize the DMG volume icon.
+        freeArgs.addAll("--icon", project.file("icon.icns").absolutePath)
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "top.ntutn.floatclock.FloatClock"
@@ -93,6 +102,9 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "floatclock"
             packageVersion = version.toString()
+            macOS {
+                iconFile.set(project.file("icon.icns"))
+            }
             linux {
                 iconFile.set(project.file("src/desktopMain/composeResources/drawable/clock.png"))
             }
