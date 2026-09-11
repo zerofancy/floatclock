@@ -6,7 +6,7 @@
 
 ![preview](doc/preview.png)
 
-目前暂时不会自动加开机启动，因为适配起来有点麻烦。反正这对你来说不难吧。
+支持 macOS、Windows、Linux 三个平台的开机启动（右键菜单切换）。
 
 ## 支持功能
 
