@@ -117,6 +117,13 @@ fun main() {
     if (isMacOS) {
         System.setProperty("apple.awt.UIElement", "true")
     }
+
+    // Single-instance guard: prevent launching a second copy of FloatClock.
+    val instanceLock = SingleInstanceChecker.acquire()
+    if (instanceLock == null) {
+        System.err.println("[FloatClock] Another instance is already running. Exiting.")
+        return
+    }
     application {
         val graphicsConfigurations = remember { overlayGraphicsConfigurations() }
         var text by remember { mutableStateOf("00:00") }
