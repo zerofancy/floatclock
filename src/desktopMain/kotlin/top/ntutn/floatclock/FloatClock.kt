@@ -2,6 +2,7 @@
 
 package top.ntutn.floatclock
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -73,6 +74,17 @@ private const val OVERLAY_WINDOW_TITLE_PREFIX = "__floatclock_overlay__"
 private const val MENU_DISMISS_TIMEOUT_MS = 1200L
 private const val MENU_DISMISS_POLL_MS = 100L
 private val DefaultClockColor = Color(0xFF1A3B32)
+internal const val DEFAULT_BACKGROUND = "transparent"
+private val BACKGROUND_COLORS = linkedMapOf(
+    "transparent" to Color.Transparent,
+    "black" to Color.Black,
+    "white" to Color.White,
+)
+private val BACKGROUND_LABELS = linkedMapOf(
+    "transparent" to "透明",
+    "black" to "黑色",
+    "white" to "白色",
+)
 private const val DEFAULT_STYLE = "digital"
 private val isMacOS = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
 private val isWindows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
@@ -129,6 +141,7 @@ fun main() {
         var text by remember { mutableStateOf("00:00") }
         var aboutVisible by remember { mutableStateOf(false) }
         var clockTextColor by remember { mutableStateOf(DefaultClockColor) }
+        var clockBackgroundColor by remember { mutableStateOf(Color.Transparent) }
         var clockStyle by remember { mutableStateOf(DEFAULT_STYLE) }
         var showNetSpeed by remember { mutableStateOf(false) }
         val themeDataStore = remember { DataStoreFactory().createThemeDataStore() }
@@ -138,6 +151,8 @@ fun main() {
         val styleMenuNormalItem = remember { JCheckBoxMenuItem("普通样式") }
         val showNetSpeedMenuItem = remember { JCheckBoxMenuItem("显示网速") }
         val loginItemMenuItem = remember { JCheckBoxMenuItem("开机启动") }
+        val backgroundMenuItems =
+            BACKGROUND_COLORS.keys.associateWith { remember(it) { JCheckBoxMenuItem(BACKGROUND_LABELS.getValue(it)) } }
 
         LaunchedEffect(Unit) {
             val dateFormat = SimpleDateFormat("HH:mm")
@@ -158,6 +173,9 @@ fun main() {
                 if (showNetSpeed != model.showNetSpeed) {
                     showNetSpeed = model.showNetSpeed
                 }
+                val resolvedBackground =
+                    if (model.backgroundColor in BACKGROUND_COLORS.keys) model.backgroundColor else DEFAULT_BACKGROUND
+                clockBackgroundColor = BACKGROUND_COLORS.getValue(resolvedBackground)
             }
         }
 
@@ -169,6 +187,13 @@ fun main() {
 
         LaunchedEffect(showNetSpeed) {
             showNetSpeedMenuItem.isSelected = showNetSpeed
+        }
+
+        LaunchedEffect(clockBackgroundColor) {
+            val selectedName = BACKGROUND_COLORS.entries.firstOrNull { it.value == clockBackgroundColor }?.key
+            backgroundMenuItems.forEach { (name, item) ->
+                item.isSelected = name == selectedName
+            }
         }
 
         // 检测当前是否已设置开机启动，同步复选项状态
@@ -197,7 +222,7 @@ fun main() {
                     add(styleMenuNormalItem)
                 }.also { add(it) }
                 addSeparator()
-                JMenu("选择颜色").apply {
+                JMenu("前景色").apply {
                     PRESET_CLOCK_COLORS.forEach { (name, hex) ->
                         add(name).addActionListener {
                             val awtColor = AwtColor.decode(hex)
@@ -210,6 +235,15 @@ fun main() {
                         val awtColor = randomPleasingColor(clockTextColor)
                         clockTextColor = Color(awtColor.rgb)
                         scope.launch { themeDataStore.updateColor(awtColor) }
+                    }
+                }.also { add(it) }
+                JMenu("背景色").apply {
+                    backgroundMenuItems.forEach { (name, item) ->
+                        item.addActionListener {
+                            clockBackgroundColor = BACKGROUND_COLORS.getValue(name)
+                            scope.launch { themeDataStore.updateBackgroundColor(name) }
+                        }
+                        add(item)
                     }
                 }.also { add(it) }
                 addSeparator()
@@ -339,6 +373,7 @@ fun main() {
                     windowTitle = windowTitle,
                     text = text,
                     textColor = clockTextColor,
+                    backgroundColor = clockBackgroundColor,
                     digitalFontFamily = digitalFontFamily,
                     clockStyle = clockStyle,
                     contextMenu = contextMenu,
@@ -361,6 +396,7 @@ private fun DialogWindowScope.FloatClockContent(
     windowTitle: String,
     text: String,
     textColor: Color,
+    backgroundColor: Color,
     digitalFontFamily: FontFamily?,
     clockStyle: String,
     contextMenu: JPopupMenu,
@@ -404,8 +440,8 @@ private fun DialogWindowScope.FloatClockContent(
         WindowDraggableArea {
             Box(
                 modifier = Modifier
+                    .background(backgroundColor)
                     .padding(horizontal = 10.dp, vertical = 6.dp)
-                    //.background(Color(0x55000000))
                     .onSizeChanged { size ->
                         if (size.height > 0) onContentSizeChanged(size.width, size.height)
                     },

@@ -1,4 +1,5 @@
 package top.ntutn.floatclock.storage
+import top.ntutn.floatclock.DEFAULT_BACKGROUND
 import androidx.datastore.core.okio.OkioSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -12,6 +13,7 @@ data class ThemeModel(
     val colorG: Int,
     val colorB: Int,
     val showNetSpeed: Boolean = false,
+    val backgroundColor: String = DEFAULT_BACKGROUND,
 ) {
     object Serializer: OkioSerializer<ThemeModel> {
         private val jsonClient = Json {

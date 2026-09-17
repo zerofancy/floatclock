@@ -21,6 +21,10 @@ class ThemeDataStore(private val produceFilePath: () -> String) {
         theme.copy(colorR = color.red, colorG = color.green, colorB = color.blue)
     }
 
+    suspend fun updateBackgroundColor(backgroundColor: String) = db.updateData { theme ->
+        theme.copy(backgroundColor = backgroundColor)
+    }
+
     suspend fun updateTheme() = db.updateData {
         val newTheme = if (it.theme == "digital") {
             "normal"
