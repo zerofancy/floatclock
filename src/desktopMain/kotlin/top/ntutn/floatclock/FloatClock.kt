@@ -16,6 +16,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,6 +52,7 @@ import top.ntutn.floatclock.net.humanBps
 import top.ntutn.floatclock.storage.DataStoreFactory
 import java.awt.Dimension
 import java.awt.GraphicsConfiguration
+import java.awt.GraphicsDevice
 import java.awt.GraphicsEnvironment
 import java.awt.MouseInfo
 import java.awt.Toolkit
@@ -73,6 +75,8 @@ import java.awt.Color as AwtColor
 private const val OVERLAY_WINDOW_TITLE_PREFIX = "__floatclock_overlay__"
 private const val MENU_DISMISS_TIMEOUT_MS = 1200L
 private const val MENU_DISMISS_POLL_MS = 100L
+private const val SCREEN_POLL_INTERVAL_MS = 1000L
+private val REPOSITION_DELAYS_MS = listOf(150L, 500L, 1200L)
 private val DefaultClockColor = Color(0xFF1A3B32)
 internal const val DEFAULT_BACKGROUND = "transparent"
 private val BACKGROUND_COLORS = linkedMapOf(
@@ -137,7 +141,8 @@ fun main() {
         return
     }
     application {
-        val graphicsConfigurations = remember { overlayGraphicsConfigurations() }
+        var overlayTargets by remember { mutableStateOf(currentOverlayTargets()) }
+        var screenRevision by remember { mutableStateOf(0) }
         var text by remember { mutableStateOf("00:00") }
         var aboutVisible by remember { mutableStateOf(false) }
         var clockTextColor by remember { mutableStateOf(DefaultClockColor) }
@@ -159,6 +164,19 @@ fun main() {
             while (true) {
                 text = dateFormat.format(System.currentTimeMillis())
                 delay(500.milliseconds)
+            }
+        }
+
+        // 监听显示器热插拔：拔出外接屏时移除对应悬浮窗，接入时补建。
+        // AWT 无显示器变更事件，故在 EDT 上轮询 GraphicsDevice。
+        LaunchedEffect(Unit) {
+            while (true) {
+                delay(SCREEN_POLL_INTERVAL_MS)
+                val latest = withContext(Dispatchers.Swing) { currentOverlayTargets() }
+                if (latest.map { it.id } != overlayTargets.map { it.id }) {
+                    overlayTargets = latest
+                    screenRevision++
+                }
             }
         }
 
@@ -326,51 +344,11 @@ fun main() {
             }
         }
 
-        graphicsConfigurations.forEachIndexed { index, graphicsConfiguration ->
-            val windowTitle = "$OVERLAY_WINDOW_TITLE_PREFIX$index"
-
-            // Both width and height: settle once per configuration change (clockStyle / showNetSpeed).
-            // Use an initial large-enough size so the window is correct on the first frame.
-            var desiredWindowHeight by remember { mutableStateOf(180) }
-            var desiredWindowWidth by remember { mutableStateOf(260) }
-            var sizeSettled by remember { mutableStateOf(false) }
-            LaunchedEffect(showNetSpeed, clockStyle) { sizeSettled = false }
-
-            DialogWindow(
-                create = {
-                    ComposeDialog(graphicsConfiguration = graphicsConfiguration).apply {
-                        // POPUP is created as a non-activating NSPanel by OpenJDK on macOS.
-                        type = Window.Type.POPUP
-                        title = windowTitle
-                        isUndecorated = true
-                        isTransparent = true
-                        isResizable = false
-                        focusableWindowState = false
-                        isAutoRequestFocus = false
-                        isAlwaysOnTop = true
-                        defaultCloseOperation = JDialog.DISPOSE_ON_CLOSE
-
-                        // Ensure the native peer is created only after all immutable window
-                        // properties (especially type) have been applied.
-                        preferredSize = Dimension(desiredWindowWidth, desiredWindowHeight)
-                        pack()
-                        preferredSize = null
-                        setSize(desiredWindowWidth, desiredWindowHeight)
-                        moveToScreenBottomEnd(this, graphicsConfiguration)
-                    }
-                },
-                dispose = ComposeDialog::dispose,
-                update = { dialog ->
-                    dialog.isAlwaysOnTop = true
-                    if (dialog.height != desiredWindowHeight || dialog.width != desiredWindowWidth) {
-                        println("set $desiredWindowWidth, $desiredWindowHeight")
-                        dialog.setSize(desiredWindowWidth, desiredWindowHeight)
-                        moveToScreenBottomEnd(dialog, graphicsConfiguration)
-                    }
-                },
-            ) {
-                FloatClockContent(
-                    windowTitle = windowTitle,
+        overlayTargets.forEach { target ->
+            key(target.id) {
+                OverlayWindow(
+                    target = target,
+                    screenRevision = screenRevision,
                     text = text,
                     textColor = clockTextColor,
                     backgroundColor = clockBackgroundColor,
@@ -378,16 +356,101 @@ fun main() {
                     clockStyle = clockStyle,
                     contextMenu = contextMenu,
                     showNetSpeed = showNetSpeed,
-                    onContentSizeChanged = { w, h ->
-                        if (!sizeSettled && w > 0 && h > 0) {
-                            sizeSettled = true
-                            desiredWindowWidth = w
-                            desiredWindowHeight = h
-                        }
-                    },
                 )
             }
         }
+    }
+}
+
+private data class OverlayTarget(
+    val id: String,
+    val graphicsConfiguration: GraphicsConfiguration,
+)
+
+@Composable
+private fun OverlayWindow(
+    target: OverlayTarget,
+    screenRevision: Int,
+    text: String,
+    textColor: Color,
+    backgroundColor: Color,
+    digitalFontFamily: FontFamily?,
+    clockStyle: String,
+    contextMenu: JPopupMenu,
+    showNetSpeed: Boolean,
+) {
+    val graphicsConfiguration = target.graphicsConfiguration
+    val windowTitle = "$OVERLAY_WINDOW_TITLE_PREFIX${target.id.hashCode().toUInt()}"
+
+    // Both width and height: settle once per configuration change (clockStyle / showNetSpeed).
+    // Use an initial large-enough size so the window is correct on the first frame.
+    var desiredWindowHeight by remember { mutableStateOf(180) }
+    var desiredWindowWidth by remember { mutableStateOf(260) }
+    var sizeSettled by remember { mutableStateOf(false) }
+    LaunchedEffect(showNetSpeed, clockStyle) { sizeSettled = false }
+
+    DialogWindow(
+        create = {
+            ComposeDialog(graphicsConfiguration = graphicsConfiguration).apply {
+                // POPUP is created as a non-activating NSPanel by OpenJDK on macOS.
+                type = Window.Type.POPUP
+                title = windowTitle
+                isUndecorated = true
+                isTransparent = true
+                isResizable = false
+                focusableWindowState = false
+                isAutoRequestFocus = false
+                isAlwaysOnTop = true
+                defaultCloseOperation = JDialog.DISPOSE_ON_CLOSE
+
+                // Ensure the native peer is created only after all immutable window
+                // properties (especially type) have been applied.
+                preferredSize = Dimension(desiredWindowWidth, desiredWindowHeight)
+                pack()
+                preferredSize = null
+                setSize(desiredWindowWidth, desiredWindowHeight)
+                moveToScreenBottomEnd(this, graphicsConfiguration)
+            }
+        },
+        dispose = ComposeDialog::dispose,
+        update = { dialog ->
+            dialog.isAlwaysOnTop = true
+            if (dialog.height != desiredWindowHeight || dialog.width != desiredWindowWidth) {
+                println("set $desiredWindowWidth, $desiredWindowHeight")
+                dialog.setSize(desiredWindowWidth, desiredWindowHeight)
+                moveToScreenBottomEnd(dialog, graphicsConfiguration)
+            }
+        },
+    ) {
+        // 屏幕拓扑变化后，AWT 的 GraphicsConfiguration 几何信息可能滞后刷新，
+        // 分几次延迟重新定位，确保窗口落回各自的屏幕。
+        LaunchedEffect(screenRevision) {
+            if (screenRevision == 0) return@LaunchedEffect
+            REPOSITION_DELAYS_MS.forEach { delayMs ->
+                delay(delayMs)
+                withContext(Dispatchers.Swing) {
+                    moveToScreenBottomEnd(window, graphicsConfiguration)
+                }
+            }
+        }
+
+        FloatClockContent(
+            windowTitle = windowTitle,
+            text = text,
+            textColor = textColor,
+            backgroundColor = backgroundColor,
+            digitalFontFamily = digitalFontFamily,
+            clockStyle = clockStyle,
+            contextMenu = contextMenu,
+            showNetSpeed = showNetSpeed,
+            onContentSizeChanged = { w, h ->
+                if (!sizeSettled && w > 0 && h > 0) {
+                    sizeSettled = true
+                    desiredWindowWidth = w
+                    desiredWindowHeight = h
+                }
+            },
+        )
     }
 }
 
@@ -486,17 +549,23 @@ private fun DialogWindowScope.FloatClockContent(
     }
 }
 
-private fun overlayGraphicsConfigurations(): List<GraphicsConfiguration> {
+private fun currentOverlayTargets(): List<OverlayTarget> {
     val graphicsEnvironment = GraphicsEnvironment.getLocalGraphicsEnvironment()
     if (isMacOS) {
         // A window has one physical screen position. Create one NSPanel per display so that
         // every display's independent full-screen Space has its own overlay instance.
-        return graphicsEnvironment.screenDevices.map { it.defaultConfiguration }
+        return graphicsEnvironment.screenDevices.mapIndexed { index, device ->
+            OverlayTarget(stableDeviceId(device, index), device.defaultConfiguration)
+        }
     }
 
     val currentDevice = runCatching { MouseInfo.getPointerInfo()?.device }.getOrNull()
-    return listOf((currentDevice ?: graphicsEnvironment.defaultScreenDevice).defaultConfiguration)
+    val device = currentDevice ?: graphicsEnvironment.defaultScreenDevice
+    return listOf(OverlayTarget("main", device.defaultConfiguration))
 }
+
+private fun stableDeviceId(device: GraphicsDevice, fallbackIndex: Int): String =
+    runCatching { device.iDstring ?: device.getIDstring() }.getOrNull()?.takeIf { it.isNotBlank() } ?: "screen-$fallbackIndex"
 
 private fun moveToScreenBottomEnd(window: Window, graphicsConfiguration: GraphicsConfiguration) {
     val screenBounds = graphicsConfiguration.bounds
