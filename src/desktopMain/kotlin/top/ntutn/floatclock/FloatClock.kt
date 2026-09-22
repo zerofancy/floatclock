@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeDialog
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -76,6 +77,11 @@ private const val OVERLAY_WINDOW_TITLE_PREFIX = "__floatclock_overlay__"
 private const val MENU_DISMISS_TIMEOUT_MS = 1200L
 private const val MENU_DISMISS_POLL_MS = 100L
 private const val SCREEN_POLL_INTERVAL_MS = 1000L
+// 双击判定窗口，取系统（AWT）的双击间隔，缺省 300ms。
+// 用 lazy 延迟取值，避免类初始化阶段初始化 AWT Toolkit（macOS 上需先设置 apple.awt.UIElement）。
+private val DOUBLE_CLICK_INTERVAL_MS: Long by lazy {
+    (Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval") as? Number)?.toLong() ?: 300L
+}
 private val REPOSITION_DELAYS_MS = listOf(150L, 500L, 1200L)
 private val DefaultClockColor = Color(0xFF1A3B32)
 internal const val DEFAULT_BACKGROUND = "transparent"
@@ -158,6 +164,15 @@ fun main() {
         val loginItemMenuItem = remember { JCheckBoxMenuItem("开机启动") }
         val backgroundMenuItems =
             BACKGROUND_COLORS.keys.associateWith { remember(it) { JCheckBoxMenuItem(BACKGROUND_LABELS.getValue(it)) } }
+
+        // 双击悬浮窗与菜单“随机”共用的换色逻辑：随机一个清晰悦目的前景色并持久化。
+        val applyRandomColor: () -> Unit = remember {
+            {
+                val awtColor = randomPleasingColor(clockTextColor)
+                clockTextColor = Color(awtColor.rgb)
+                scope.launch { themeDataStore.updateColor(awtColor) }
+            }
+        }
 
         LaunchedEffect(Unit) {
             val dateFormat = SimpleDateFormat("HH:mm")
@@ -250,9 +265,7 @@ fun main() {
                     }
                     addSeparator()
                     add("随机").addActionListener {
-                        val awtColor = randomPleasingColor(clockTextColor)
-                        clockTextColor = Color(awtColor.rgb)
-                        scope.launch { themeDataStore.updateColor(awtColor) }
+                        applyRandomColor()
                     }
                 }.also { add(it) }
                 JMenu("背景色").apply {
@@ -356,6 +369,7 @@ fun main() {
                     clockStyle = clockStyle,
                     contextMenu = contextMenu,
                     showNetSpeed = showNetSpeed,
+                    onRandomColor = applyRandomColor,
                 )
             }
         }
@@ -378,6 +392,7 @@ private fun OverlayWindow(
     clockStyle: String,
     contextMenu: JPopupMenu,
     showNetSpeed: Boolean,
+    onRandomColor: () -> Unit,
 ) {
     val graphicsConfiguration = target.graphicsConfiguration
     val windowTitle = "$OVERLAY_WINDOW_TITLE_PREFIX${target.id.hashCode().toUInt()}"
@@ -443,6 +458,7 @@ private fun OverlayWindow(
             clockStyle = clockStyle,
             contextMenu = contextMenu,
             showNetSpeed = showNetSpeed,
+            onRandomColor = onRandomColor,
             onContentSizeChanged = { w, h ->
                 if (!sizeSettled && w > 0 && h > 0) {
                     sizeSettled = true
@@ -464,6 +480,7 @@ private fun DialogWindowScope.FloatClockContent(
     clockStyle: String,
     contextMenu: JPopupMenu,
     showNetSpeed: Boolean,
+    onRandomColor: () -> Unit,
     onContentSizeChanged: (width: Int, height: Int) -> Unit = { _, _ -> },
 ) {
     val dialog = window
@@ -481,6 +498,7 @@ private fun DialogWindowScope.FloatClockContent(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
+            var lastPrimaryClickAt = 0L
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent()
@@ -493,6 +511,15 @@ private fun DialogWindowScope.FloatClockContent(
                                 contextMenu.invoker = contextMenu
                                 contextMenu.isVisible = true
                             }
+                        }
+                    } else if (event.type == PointerEventType.Press && event.buttons.isPrimaryPressed) {
+                        // 双击随机切换前景色。不 consume 事件，避免干扰 WindowDraggableArea 的拖动。
+                        val now = System.currentTimeMillis()
+                        if (now - lastPrimaryClickAt <= DOUBLE_CLICK_INTERVAL_MS) {
+                            lastPrimaryClickAt = 0L
+                            onRandomColor()
+                        } else {
+                            lastPrimaryClickAt = now
                         }
                     }
                 }
