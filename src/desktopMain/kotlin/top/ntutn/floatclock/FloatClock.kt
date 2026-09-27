@@ -2,6 +2,8 @@
 
 package top.ntutn.floatclock
 
+import org.slf4j.LoggerFactory
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,6 +75,8 @@ import androidx.compose.ui.text.platform.Font as PlatformFont
 import androidx.compose.ui.window.Window as ComposeWindow
 import java.awt.Color as AwtColor
 
+private val logger = LoggerFactory.getLogger("FloatClock")
+
 private const val OVERLAY_WINDOW_TITLE_PREFIX = "__floatclock_overlay__"
 private const val MENU_DISMISS_TIMEOUT_MS = 1200L
 private const val MENU_DISMISS_POLL_MS = 100L
@@ -143,7 +147,7 @@ fun main() {
     // Single-instance guard: prevent launching a second copy of FloatClock.
     val instanceLock = SingleInstanceChecker.acquire()
     if (instanceLock == null) {
-        System.err.println("[FloatClock] Another instance is already running. Exiting.")
+        logger.info("Another instance is already running. Exiting.")
         return
     }
     application {
@@ -235,7 +239,7 @@ fun main() {
                 val enabled = withContext(Dispatchers.Default) {
                     AutoStart.isEnabled()
                 }
-                System.err.println("[FloatClock] Initial autostart state: enabled=$enabled")
+                logger.debug("Initial autostart state: enabled={}", enabled)
                 loginItemMenuItem.isSelected = enabled
             }
         }
@@ -431,7 +435,7 @@ private fun OverlayWindow(
         update = { dialog ->
             dialog.isAlwaysOnTop = true
             if (dialog.height != desiredWindowHeight || dialog.width != desiredWindowWidth) {
-                println("set $desiredWindowWidth, $desiredWindowHeight")
+                logger.debug("Resizing overlay window to width={}, height={}", desiredWindowWidth, desiredWindowHeight)
                 dialog.setSize(desiredWindowWidth, desiredWindowHeight)
                 moveToScreenBottomEnd(dialog, graphicsConfiguration)
             }
@@ -571,7 +575,7 @@ private fun DialogWindowScope.FloatClockContent(
                 }
                 delay(50)
             }
-            System.err.println("Unable to find the FloatClock NSWindow to configure: $windowTitle")
+            logger.warn("Unable to find the FloatClock NSWindow to configure: {}", windowTitle)
         }
     }
 }

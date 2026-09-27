@@ -1,5 +1,7 @@
 package top.ntutn.floatclock.linux
 
+import org.slf4j.LoggerFactory
+
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -10,6 +12,8 @@ import java.nio.file.Paths
  * 兼容 GNOME、KDE、XFCE、MATE、Cinnamon 等主流桌面环境。
  */
 object LinuxAutoStart {
+    private val logger = LoggerFactory.getLogger("LinuxAutoStart")
+
     private const val DESKTOP_FILE_NAME = "floatclock.desktop"
 
     private val isLinux: Boolean get() =
@@ -29,7 +33,7 @@ object LinuxAutoStart {
             val file = autostartFile()
             file.exists() && file.readText().contains("Exec=")
         }.onFailure {
-            System.err.println("[FloatClock][Linux] Failed to query autostart: ${it.message}")
+            logger.warn("Failed to query autostart", it)
         }.getOrDefault(false)
     }
 
@@ -42,17 +46,17 @@ object LinuxAutoStart {
                 disableAutostart()
             }
         }.onFailure {
-            System.err.println("[FloatClock][Linux] Exception while toggling autostart: ${it.message}")
+            logger.error("Exception while toggling autostart", it)
         }.getOrDefault(false)
     }
 
     private fun enableAutostart(): Boolean {
         val execPath = findExecutablePath()
         if (execPath == null) {
-            System.err.println("[FloatClock][Linux] Cannot determine executable path; refuse to enable autostart")
+            logger.warn("Cannot determine executable path; refuse to enable autostart")
             return false
         }
-        System.err.println("[FloatClock][Linux] Will register autostart exec: $execPath")
+        logger.debug("Will register autostart exec: {}", execPath)
 
         val dir = autostartDir()
         if (!dir.exists()) {
@@ -75,12 +79,12 @@ object LinuxAutoStart {
 
         // 验证写入成功
         if (!isLoginItemEnabled()) {
-            System.err.println("[FloatClock][Linux] Desktop file written but verification failed; cleaning up")
+            logger.error("Desktop file written but verification failed; cleaning up")
             file.delete()
             return false
         }
 
-        System.err.println("[FloatClock][Linux] Autostart registered successfully: ${file.absolutePath}")
+        logger.info("Autostart registered successfully: {}", file.absolutePath)
         return true
     }
 
@@ -88,9 +92,9 @@ object LinuxAutoStart {
         val file = autostartFile()
         if (file.exists()) {
             file.delete()
-            System.err.println("[FloatClock][Linux] Autostart unregistered successfully")
+            logger.info("Autostart unregistered successfully")
         } else {
-            System.err.println("[FloatClock][Linux] Autostart file was not present; nothing to delete")
+            logger.debug("Autostart file was not present; nothing to delete")
         }
         return true
     }

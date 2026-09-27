@@ -1,5 +1,7 @@
 package top.ntutn.floatclock
 
+import org.slf4j.LoggerFactory
+
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.channels.FileChannel
@@ -13,7 +15,6 @@ import java.nio.channels.FileLock
  * val lock = SingleInstanceChecker.acquire()
  * if (lock == null) {
  *     // Another instance is already running – exit.
- *     println("FloatClock is already running. Exiting.")
  *     return
  * }
  * // ... normal startup ...
@@ -22,6 +23,8 @@ import java.nio.channels.FileLock
  * ```
  */
 object SingleInstanceChecker {
+    private val logger = LoggerFactory.getLogger("SingleInstanceChecker")
+
     private const val LOCK_FILE_NAME = ".floatclock.lock"
 
     /**
@@ -42,7 +45,7 @@ object SingleInstanceChecker {
                 null
             }
         } catch (e: Exception) {
-            System.err.println("[FloatClock] Failed to acquire instance lock: ${e.message}")
+            logger.error("Failed to acquire instance lock", e)
             null
         }
     }

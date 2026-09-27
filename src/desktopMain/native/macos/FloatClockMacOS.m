@@ -127,22 +127,30 @@ Java_top_ntutn_floatclock_macos_MacOSWindowBridge_setLoginItemEnabledSMNative(
     jobject receiver,
     jboolean enabled
 ) {
-    (void)env;
     (void)receiver;
     __block BOOL success = NO;
+    __block NSString *failureMessage = nil;
     void (^set)(void) = ^{
         NSError *error = nil;
         success = FloatClockSetLoginItemEnabledSM(enabled == JNI_TRUE, &error);
         if (!success && error) {
-            fprintf(stderr, "[FloatClock] SMAppService %@ failed: %s\n",
-                    (enabled == JNI_TRUE) ? @"register" : @"unregister",
-                    error.localizedDescription.UTF8String ?: "unknown error");
+            failureMessage = [NSString stringWithFormat:@"SMAppService %@ failed: %@",
+                              (enabled == JNI_TRUE) ? @"register" : @"unregister",
+                              error.localizedDescription ?: @"unknown error"];
         }
     };
     if (NSThread.isMainThread) {
         set();
     } else {
         dispatch_sync(dispatch_get_main_queue(), set);
+    }
+    // Propagate on the calling JVM thread so the Kotlin caller can log the exception via SLF4J.
+    if (failureMessage != nil) {
+        jclass exceptionClass = (*env)->FindClass(env, "java/lang/IllegalStateException");
+        if (exceptionClass != NULL) {
+            (*env)->ThrowNew(env, exceptionClass, failureMessage.UTF8String);
+            (*env)->DeleteLocalRef(env, exceptionClass);
+        }
     }
     return success ? JNI_TRUE : JNI_FALSE;
 }

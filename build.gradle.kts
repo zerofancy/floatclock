@@ -78,6 +78,8 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutines.swing)
             implementation(libs.oshi.core)
+            implementation(libs.slf4j.api)
+            runtimeOnly(libs.logback.classic)
         }
     }
 }

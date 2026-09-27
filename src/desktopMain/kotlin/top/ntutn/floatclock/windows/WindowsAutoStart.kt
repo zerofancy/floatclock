@@ -1,5 +1,7 @@
 package top.ntutn.floatclock.windows
 
+import org.slf4j.LoggerFactory
+
 import java.nio.file.Paths
 
 /**
@@ -7,6 +9,8 @@ import java.nio.file.Paths
  * 无管理员权限要求，对应 macOS LaunchAgent 的定位。
  */
 object WindowsAutoStart {
+    private val logger = LoggerFactory.getLogger("WindowsAutoStart")
+
     private const val REG_RUN_PATH = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
     private const val REG_VALUE_NAME = "floatclock"
 
@@ -19,7 +23,7 @@ object WindowsAutoStart {
             val result = runRegCmd("query", REG_RUN_PATH, "/v", REG_VALUE_NAME)
             result.exitCode == 0 && result.stdout.contains(REG_VALUE_NAME, ignoreCase = true)
         }.onFailure {
-            System.err.println("[FloatClock][Windows] Failed to query autostart: ${it.message}")
+            logger.warn("Failed to query autostart", it)
         }.getOrDefault(false)
     }
 
@@ -29,10 +33,10 @@ object WindowsAutoStart {
             if (enabled) {
                 val exePath = findExecutablePath()
                 if (exePath == null) {
-                    System.err.println("[FloatClock][Windows] Cannot determine executable path; refuse to enable autostart")
+                    logger.warn("Cannot determine executable path; refuse to enable autostart")
                     return@runCatching false
                 }
-                System.err.println("[FloatClock][Windows] Will register autostart exe: $exePath")
+                logger.debug("Will register autostart exe: {}", exePath)
 
                 val addResult = runRegCmd(
                     "add", REG_RUN_PATH,
@@ -42,18 +46,18 @@ object WindowsAutoStart {
                     "/f"
                 )
                 if (addResult.exitCode != 0) {
-                    System.err.println("[FloatClock][Windows] reg add failed (exit ${addResult.exitCode}): ${addResult.stderr}")
+                    logger.error("reg add failed (exit {}): {}", addResult.exitCode, addResult.stderr)
                     return@runCatching false
                 }
 
                 // 二次确认
                 val verified = isLoginItemEnabled()
                 if (!verified) {
-                    System.err.println("[FloatClock][Windows] reg add succeeded but value not present; rollback")
+                    logger.error("reg add succeeded but value not present; rollback")
                     runRegCmd("delete", REG_RUN_PATH, "/v", REG_VALUE_NAME, "/f")
                     return@runCatching false
                 }
-                System.err.println("[FloatClock][Windows] Autostart registered successfully")
+                logger.info("Autostart registered successfully")
                 true
             } else {
                 val result = runRegCmd("delete", REG_RUN_PATH, "/v", REG_VALUE_NAME, "/f")
@@ -62,17 +66,17 @@ object WindowsAutoStart {
                     val notFound = result.stderr.contains("not find", ignoreCase = true)
                             || result.stderr.contains("not found", ignoreCase = true)
                     if (notFound) {
-                        System.err.println("[FloatClock][Windows] Autostart value was not present; nothing to delete")
+                        logger.debug("Autostart value was not present; nothing to delete")
                         return@runCatching true
                     }
-                    System.err.println("[FloatClock][Windows] reg delete failed (exit ${result.exitCode}): ${result.stderr}")
+                    logger.error("reg delete failed (exit {}): {}", result.exitCode, result.stderr)
                     return@runCatching false
                 }
-                System.err.println("[FloatClock][Windows] Autostart unregistered successfully")
+                logger.info("Autostart unregistered successfully")
                 true
             }
         }.onFailure {
-            System.err.println("[FloatClock][Windows] Exception while toggling autostart: ${it.message}")
+            logger.error("Exception while toggling autostart", it)
         }.getOrDefault(false)
     }
 
@@ -138,7 +142,7 @@ object WindowsAutoStart {
         val exit = process.waitFor()
         RegResult(exit, stdout, stderr)
     }.getOrElse {
-        System.err.println("[FloatClock][Windows] reg.exe execution exception: ${it.message}")
+        logger.warn("reg.exe execution exception", it)
         RegResult(-1, "", it.message ?: "unknown error")
     }
 }

@@ -1,0 +1,13 @@
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
+        <encoder>
+            <charset>UTF-8</charset>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{48} - %msg%n%ex</pattern>
+        </encoder>
+    </appender>
+
+    <root level="${floatclock.log.level:-INFO}">
+        <appender-ref ref="CONSOLE" />
+    </root>
+</configuration>

@@ -1,10 +1,14 @@
 package top.ntutn.floatclock.macos
 
+import org.slf4j.LoggerFactory
+
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.Paths
 
 object MacOSWindowBridge {
+    private val logger = LoggerFactory.getLogger("MacOSWindowBridge")
+
     private const val LIBRARY_RESOURCE = "/native/macos/libfloatclock_macos.dylib"
     private const val LAUNCH_AGENT_LABEL = "top.ntutn.floatclock"
 
@@ -16,21 +20,21 @@ object MacOSWindowBridge {
             return false
         }
         return runCatching { configureWindow(windowTitle) }
-            .onFailure { System.err.println("Unable to configure the macOS overlay window: ${it.message}") }
+            .onFailure { logger.warn("Unable to configure the macOS overlay window", it) }
             .getOrDefault(false)
     }
 
     fun isLoginItemEnabled(): Boolean {
         if (!isMacOS) return false
         return runCatching { isLaunchAgentEnabled() }
-            .onFailure { System.err.println("[FloatClock] Failed to check login item status: ${it.message}") }
+            .onFailure { logger.warn("Failed to check login item status", it) }
             .getOrDefault(false)
     }
 
     fun setLoginItemEnabled(enabled: Boolean): Boolean {
         if (!isMacOS) return false
         return runCatching { setLaunchAgentEnabled(enabled) }
-            .onFailure { System.err.println("[FloatClock] Failed to set login item: ${it.message}") }
+            .onFailure { logger.error("Failed to set login item", it) }
             .getOrDefault(false)
     }
 
@@ -60,7 +64,7 @@ object MacOSWindowBridge {
             }
             null
         }.onFailure {
-            System.err.println("[FloatClock] Failed to determine .app bundle path: ${it.message}")
+            logger.warn("Failed to determine .app bundle path", it)
         }.getOrNull()
     }
 
@@ -81,11 +85,11 @@ object MacOSWindowBridge {
         val output = process.inputStream.bufferedReader().readText()
         val exit = process.waitFor()
         if (exit != 0) {
-            System.err.println("[FloatClock] launchctl ${args.joinToString(" ")} failed (exit $exit): $output")
+            logger.warn("launchctl {} failed (exit {}): {}", args.joinToString(" "), exit, output)
         }
         exit == 0
     }.onFailure {
-        System.err.println("[FloatClock] launchctl ${args.joinToString(" ")} exception: ${it.message}")
+        logger.warn("launchctl {} exception", args.joinToString(" "), it)
     }.getOrDefault(false)
 
     private fun isLaunchAgentEnabled(): Boolean {
@@ -102,10 +106,10 @@ object MacOSWindowBridge {
         if (enabled) {
             val appPath = findAppBundlePath()
             if (appPath == null) {
-                System.err.println("[FloatClock] LaunchAgent: cannot determine .app bundle path")
+                logger.warn("LaunchAgent: cannot determine .app bundle path")
                 return false
             }
-            System.err.println("[FloatClock] LaunchAgent: using app path: $appPath")
+            logger.debug("LaunchAgent: using app path: {}", appPath)
 
             // Write the plist.
             val plistContent = """<?xml version="1.0" encoding="UTF-8"?>
@@ -127,25 +131,25 @@ object MacOSWindowBridge {
 """
             plistFile.parentFile?.mkdirs()
             plistFile.writeText(plistContent)
-            System.err.println("[FloatClock] LaunchAgent: plist written to $plistPath")
+            logger.debug("LaunchAgent: plist written to {}", plistPath)
 
             // If already loaded, bootout first so the new plist takes effect.
             if (isLaunchAgentEnabled()) {
-                System.err.println("[FloatClock] LaunchAgent: already loaded, bootout first")
+                logger.debug("LaunchAgent: already loaded, bootout first")
                 runLaunchCtl("bootout", "gui/$uid/$LAUNCH_AGENT_LABEL")
             }
 
             // Bootstrap (load) the agent.
             val bootstrapped = runLaunchCtl("bootstrap", "gui/$uid", plistPath)
             if (!bootstrapped) {
-                System.err.println("[FloatClock] LaunchAgent: bootstrap failed, cleaning up plist")
+                logger.error("LaunchAgent: bootstrap failed, cleaning up plist")
                 plistFile.delete()
                 return false
             }
 
             // Ensure it is enabled (auto-start on next login).
             runLaunchCtl("enable", "gui/$uid/$LAUNCH_AGENT_LABEL")
-            System.err.println("[FloatClock] LaunchAgent: registered successfully")
+            logger.info("LaunchAgent: registered successfully")
             return true
         } else {
             if (isLaunchAgentEnabled()) {
@@ -154,7 +158,7 @@ object MacOSWindowBridge {
             if (plistFile.exists()) {
                 plistFile.delete()
             }
-            System.err.println("[FloatClock] LaunchAgent: unregistered successfully")
+            logger.info("LaunchAgent: unregistered successfully")
             return true
         }
     }
@@ -179,7 +183,7 @@ object MacOSWindowBridge {
             libraryLoaded = true
             true
         }.onFailure {
-            System.err.println("Unable to load the macOS window bridge: ${it.message}")
+            logger.error("Unable to load the macOS window bridge", it)
         }.getOrDefault(false)
     }
 

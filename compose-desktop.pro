@@ -53,6 +53,10 @@
 -keep class oshi.** { *; }
 -dontwarn oshi.**
 
+# SLF4J provider 通过 ServiceLoader 加载，Logback XML 通过反射创建 appender/encoder。
+-keep class org.slf4j.** { *; }
+-keep class ch.qos.logback.** { *; }
+
 # Compose 系列：插件默认规则只 keep 了关键 entry，但会让 ProGuard 把内部类的
 # Companion 与 TraverseKey 字段都混淆成 "a"，造成冲突。
 # 策略：保留字段名（allowshrinking+allowobfuscation=允许压缩但不混淆类/成员名）
@@ -62,7 +66,11 @@
 # 4. 精确的 unresolved reference 忽略
 #    这些类在 Desktop JVM 上是可选依赖 / 仅在特定平台存在
 # ==============================================================================
--dontwarn org.slf4j.**                  # OSHI 可选日志
+# Logback 可选组件：邮件、Servlet、ANSI 控制台和 XZ 压缩；当前仅使用普通控制台。
+-dontwarn jakarta.mail.**
+-dontwarn jakarta.servlet.**
+-dontwarn org.jline.jansi.AnsiConsole
+-dontwarn org.tukaani.xz.**
 -dontwarn android.annotation.SuppressLint                # Android-only
 -dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 -dontwarn org.graalvm.compiler.core.aarch64.AArch64NodeMatchRules_MatchStatementSet*
