@@ -14,6 +14,8 @@ data class ThemeModel(
     val colorB: Int,
     val showNetSpeed: Boolean = false,
     val backgroundColor: String = DEFAULT_BACKGROUND,
+    val showOutline: Boolean = false,
+    val outlineColor: String = "white",
 ) {
     object Serializer: OkioSerializer<ThemeModel> {
         private val jsonClient = Json {

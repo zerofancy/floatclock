@@ -17,6 +17,8 @@ class ThemeDataStore(private val produceFilePath: () -> String) {
 
     fun themeData() = db.data
 
+    internal suspend fun update(transform: (ThemeModel) -> ThemeModel) = db.updateData(transform)
+
     suspend fun updateColor(color: Color) = db.updateData { theme ->
         theme.copy(colorR = color.red, colorG = color.green, colorB = color.blue)
     }

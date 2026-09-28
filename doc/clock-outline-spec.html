@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FloatClock · 文字描边 Spec</title>
+  <style>
+    :root { color-scheme: light; --ink:#18332e; --muted:#60756e; --line:#dce5df; --accent:#176c53; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f4f6f2; color:var(--ink); font:16px/1.8 system-ui,-apple-system,"PingFang SC",sans-serif; }
+    main { max-width:1040px; margin:auto; padding:56px 32px 80px; }
+    header { padding-bottom:30px; border-bottom:2px solid var(--ink); }
+    .eyebrow { color:var(--accent); font-size:13px; letter-spacing:.12em; font-weight:700; }
+    h1 { font-size:42px; line-height:1.25; margin:16px 0; }
+    h2 { font-size:25px; margin:44px 0 16px; }
+    h3 { font-size:18px; margin:25px 0 10px; }
+    p { margin:10px 0; }
+    .meta,.note { color:var(--muted); font-size:14px; }
+    .lead { font-size:20px; max-width:850px; }
+    .callout { padding:18px 22px; background:#e5eee6; border-left:4px solid var(--accent); margin:22px 0; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    .card { background:white; border:1px solid var(--line); border-radius:12px; padding:22px; }
+    table { border-collapse:collapse; width:100%; background:white; font-size:14px; }
+    th,td { text-align:left; vertical-align:top; padding:12px 14px; border:1px solid var(--line); }
+    th { background:#eaf0e9; }
+    .table-scroll { overflow-x:auto; }
+    code { font: .9em/1.6 ui-monospace,SFMono-Regular,monospace; overflow-wrap:anywhere; }
+    pre { white-space:pre-wrap; padding:20px; border-radius:10px; background:#17352e; color:#e5eee6; line-height:1.65; overflow-wrap:anywhere; }
+    a { color:var(--accent); }
+    li { margin:7px 0; }
+    .demo { display:flex; justify-content:center; align-items:center; min-height:140px; border-radius:8px; background:repeating-conic-gradient(#e8ece8 0% 25%,#fff 0% 50%) 50%/24px 24px; }
+    .clock { font-size:60px; font-weight:500; line-height:1.2; color:#1a3b32; -webkit-text-stroke:2px white; paint-order:stroke fill; }
+    .clock.black { color:#ffd111; -webkit-text-stroke-color:black; }
+    @media(max-width:680px) { main { padding:30px 18px; } h1 { font-size:32px; } .grid { grid-template-columns:1fr; } }
+    @media print { body { background:white; } main { padding:0; } .card, tr, pre { break-inside:avoid; } h2,h3 { break-after:avoid; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">FLOATCLOCK / FEATURE SPEC / 01</div>
+    <h1>时钟文字描边</h1>
+    <p class="lead">为时钟文字增加黑色或白色轮廓。开启时背景固定透明，保留前景色，让文字在桌面内容上更清晰。</p>
+    <p class="meta">日期：2026-09-28 · 状态：已实现，跨平台实机验收待完成 · 基于当前 Compose Multiplatform 1.8.2 桌面实现</p>
+  </header>
+
+  <h2>01 / 功能边界与默认决策</h2>
+  <p>用户明确需求：在“时钟样式”中增加“显示描边”复选框；开启后背景固定透明；增加“描边颜色”，仅可选黑色和白色。</p>
+  <div class="callout"><strong>本 spec 的补充设计决策：</strong>默认关闭描边，默认描边色为白色；描边同时作用于时间和已显示的网速；关闭描边后恢复此前背景色。描边宽度作为内部常量，不增加设置项。</div>
+  <p>“描边”指字形轮廓，不是悬浮窗矩形边框，也不是空心文字。数码管样式、普通样式及字体回退均支持。文字内部仍使用现有前景色，随机换色和双击换色继续只改变前景色。</p>
+  <div class="grid">
+    <div class="card"><div class="demo"><span class="clock">12:48</span></div><p><strong>白色描边</strong> · 配深色文字</p></div>
+    <div class="card"><div class="demo"><span class="clock black">12:48</span></div><p><strong>黑色描边</strong> · 配亮色文字</p></div>
+  </div>
+  <p class="note">以上为浏览器示意，棋盘格表示透明。字体、抗锯齿与描边粗细以 Compose 实机验收为准；应用不绘制棋盘格。</p>
+
+  <h2>02 / 菜单与交互</h2>
+  <p>沿用现有 Swing 右键菜单，“显示描边”放入“时钟样式”；“描边颜色”作为一级菜单，与“前景色”“背景色”并列，位于“背景色”之后。</p>
+  <pre>时钟样式 ▸
+    ✓ 数码管样式
+      普通样式
+    ──────────
+    ☑ 显示描边
+前景色 ▸
+背景色（描边时固定透明） ▸  [禁用]
+    ✓ 透明
+      黑色
+      白色
+描边颜色 ▸
+      黑色
+    ✓ 白色</pre>
+  <ul>
+    <li><strong>显示描边：</strong>使用 JCheckBoxMenuItem，点击立即生效并持久化；不切换数码管／普通样式。</li>
+    <li><strong>描边颜色：</strong>子菜单用互斥单选项（JRadioButtonMenuItem + ButtonGroup）；始终只有黑、白之一被选中。关闭描边时该子菜单禁用，保留上次选择。</li>
+    <li><strong>背景色：</strong>开启描边时整组禁用，标签改为“背景色（描边时固定透明）”，选中态显示透明；关闭时恢复“背景色”标签、可选状态及之前的选择。</li>
+    <li><strong>即时一致：</strong>所有显示器上的悬浮窗与菜单同步更新，不重新创建窗口，不改变置顶、拖动、右键及双击行为。</li>
+  </ul>
+  <div class="table-scroll"><table>
+    <thead><tr><th>操作</th><th>生效背景</th><th>描边</th><th>持久化</th></tr></thead>
+    <tbody>
+      <tr><td>旧配置首次升级</td><td>原背景色</td><td>关闭；预选白色</td><td>缺失字段使用默认值</td></tr>
+      <tr><td>黑色背景 → 开启描边</td><td>透明；背景菜单禁用</td><td>上次描边色</td><td>只更新 showOutline；保留 black 背景偏好</td></tr>
+      <tr><td>切换描边颜色</td><td>保持透明</td><td>即时切换黑／白</td><td>只更新 outlineColor</td></tr>
+      <tr><td>关闭描边</td><td>恢复黑色背景</td><td>不绘制</td><td>只更新 showOutline；保留描边色</td></tr>
+      <tr><td>开启状态下重启</td><td>直接使用透明</td><td>恢复已选颜色</td><td>由同一份配置派生，不先恢复实色背景</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>03 / 绘制方案</h2>
+  <h3>结论：同一份文字布局，先 Stroke，再 Fill</h3>
+  <p>新增可复用 <code>OutlinedClockText</code>，使用 Compose 的 <code>TextMeasurer</code> 生成一份 <code>TextLayoutResult</code>，两次 <code>drawText</code> 共享布局与坐标。第一次绘制描边，第二次绘制实心前景色。这样字体回退、字距、基线和上下行中的箭头都由同一套排版处理。</p>
+  <p>已核对本机缓存的 <strong>ui-text-desktop 1.8.2 源码</strong>：<code>drawText(textLayoutResult, color, …, drawStyle)</code> 支持 DrawStyle，并传递到底层段落绘制；因此方案无需升级 Compose、引入新依赖或增加 JNI。公共 API 说明参见 <a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/text/package-summary">Compose Text API</a>。已通过本项目的 Compose 离屏渲染测试，覆盖普通／数码管字体、黑白描边及 100%／125%／150%／200% 缩放；原生窗口的跨平台交互仍需实机验收。</p>
+  <div class="table-scroll"><table>
+    <thead><tr><th>候选方案</th><th>判断</th><th>原因</th></tr></thead>
+    <tbody>
+      <tr><td>同一 TextLayoutResult 双遍绘制</td><td>采用</td><td>排版完全一致，轮廓连续，可直接控制线宽与圆角连接。</td></tr>
+      <tr><td>两个 Text 叠加</td><td>不作为主方案</td><td>需要协调重复布局、语义、尺寸和更新；容易出现两层不同步。</td></tr>
+      <tr><td>多个偏移文本／阴影</td><td>不采用</td><td>模拟轮廓的方向性明显，小字号容易糊，增加绘制次数。</td></tr>
+      <tr><td>AWT／Skia 字形路径或位图膨胀</td><td>不采用</td><td>需额外处理字体回退、字形排版或离屏资源；维护成本高于现有 Compose API。</td></tr>
+    </tbody>
+  </table></div>
+  <h3>线宽与层叠</h3>
+  <ul>
+    <li>时间仍为 <strong>48.sp</strong>，可见外轮廓目标 <strong>1.dp</strong>；Stroke 总宽为 <strong>2.dp</strong>。</li>
+    <li>网速仍为 <strong>14.sp</strong>，可见外轮廓目标 <strong>0.5.dp</strong>；Stroke 总宽为 <strong>1.dp</strong>。</li>
+    <li>Stroke 沿字形边缘居中，后绘的 Fill 覆盖内部半宽；使用 <code>StrokeJoin.Round</code> 避免尖角外突。</li>
+    <li>描边使用完全不透明的纯黑或纯白；填充使用原前景色。允许填充与描边同色，不自动换色。</li>
+    <li>线宽按当前窗口 density 换算为像素，不使用固定物理像素。常量可在实现后的视觉验收中微调，并同步更新本 spec。</li>
+  </ul>
+  <pre><code>// 绘制核心示意；不是完整可编译组件。
+// layout、origin、边距均在测量阶段确定，两遍共用。
+if (showOutline) {
+    drawText(
+        textLayoutResult = layout,
+        color = outlineColor,
+        topLeft = origin,
+        drawStyle = Stroke(
+            width = 2f * outlineOutsideWidth.toPx(),
+            join = StrokeJoin.Round,
+        ),
+    )
+}
+drawText(layout, color = foregroundColor, topLeft = origin, drawStyle = Fill)</code></pre>
+  <h3>布局、防裁切与缓存</h3>
+  <ol>
+    <li>以原 Text 的有效 TextStyle 为基准，保持 fontFamily、fontSize、行高、字重和字距；不要使用一套未经对齐的默认 Canvas 字体样式。</li>
+    <li>使用单行、不折行和 <code>TextOverflow.Visible</code> 测量，预留真实文字宽度，不能被当前窗口的旧宽度约束后再反推窗口尺寸。1.8.2 的 drawText 会在溢出且 overflow 非 Visible 时裁切，需要显式规避。</li>
+    <li>每个文本组件四周增加 <code>ceil(外轮廓像素宽 + 1.dp.toPx())</code> 的透明安全区；描边关闭时不增加。组件尺寸为布局尺寸加两侧安全区，绘制原点向内平移相同值。保留外层 10.dp／6.dp 边距与原行间距。</li>
+    <li>为自绘组件保留文本语义，时间和网速各仅一份；如父布局依赖基线，则按安全区偏移后的文字基线暴露 alignment line。</li>
+    <li>缓存键包含文字、有效字体样式、字体解析器、density、fontScale、布局方向及测量约束。颜色只影响绘制；时间字符串未变时不重复测量。网速仍按现有频率更新，不引入动画或逐帧刷新。</li>
+  </ol>
+  <div class="callout"><strong>现有窗口尺寸逻辑必须一并调整。</strong>当前 OverlayWindow 的 sizeSettled 仅在样式／网速显示开关变化时重置，无法可靠容纳描边边距与后续变宽的网速。应使用独立于当前窗口尺寸的自然内容测量，每次自然尺寸实际变化才更新窗口；防止旧窗口约束导致测量锁死。</div>
+  <p>尺寸策略：字体、显示网速、描边开关或 density/fontScale 改变时，重建本轮尺寸基准；同一配置内用已见自然宽高的最大值，只在需要时扩展，避免每秒收缩／扩展。关闭网速或描边后允许收回空间。现有自动定位规则保持；文字更新但尺寸未变时，不调用 setSize 或重定位。首帧不能将受初始窗口约束的尺寸锁定为最终值。</p>
+
+  <h2>04 / 状态与持久化</h2>
+  <pre><code>// 在 ThemeModel 末尾增加，兼容旧 JSON。
+val showOutline: Boolean = false,
+val outlineColor: String = "white",
+
+// backgroundColor 保存用户偏好，最终绘制色集中派生。
+effectiveBackground = if (showOutline) Transparent else resolvedBackground
+resolvedOutline = if (outlineColor in setOf("black", "white")) outlineColor else "white"</code></pre>
+  <ul>
+    <li>通过 ClockSettings.update 提交 copy 变更，由 ThemeDataStore.update 使用 DataStore.updateData 串行保存；菜单颜色入口仅来自固定黑白取值表。</li>
+    <li>不覆盖 backgroundColor 来实现透明；有效背景与菜单选中态均从同一份归一化状态派生，避免启用瞬间出现实色背景。</li>
+    <li>缺失字段取默认值；未知描边颜色读作 white，不造成启动失败。JSON 损坏或字段类型错误仍按既有异常策略处理，不扩大本次配置修复范围。</li>
+    <li>菜单发送目标值而不是盲目取反。连续设置按用户操作顺序串行落盘；乐观状态要带版本控制，防止较旧 DataStore 发射覆盖最新操作。失败时回到最后已确认配置，同步菜单和所有窗口。</li>
+    <li>Swing 菜单的 selected、enabled、text 更新在 EDT 执行；不要把 remember 创建菜单时的旧布尔值捕获成永久状态。</li>
+    <li>写入失败按项目规范记录 ERROR，并将异常放在最后一个参数；绘制和高频刷新不输出 INFO 日志。</li>
+  </ul>
+
+  <h2>05 / 实现拆分</h2>
+  <div class="table-scroll"><table>
+    <thead><tr><th>文件／职责</th><th>计划修改</th></tr></thead>
+    <tbody>
+      <tr><td><code>storage/ThemeModel.kt</code></td><td>增加有默认值的描边字段，保留背景偏好。</td></tr>
+      <tr><td><code>storage/ThemeDataStore.kt</code></td><td>提供内部原子更新入口，由 ClockSettings 顺序提交配置变更。</td></tr>
+      <tr><td>新增 <code>ClockAppearance.kt</code></td><td>集中解析配置、有效背景、描边颜色与宽度常量，提供不可变绘制参数。</td></tr>
+      <tr><td>新增 <code>ClockSettings.kt</code>／<code>ClockContentSize.kt</code></td><td>封装顺序保存、失败回退及待保存操作重放；维护每轮配置的最大自然尺寸。</td></tr>
+      <tr><td>新增 <code>OutlinedClockText.kt</code></td><td>封装一次测量、双遍绘制、透明安全区和语义；时间与网速共用。</td></tr>
+      <tr><td><code>FloatClock.kt</code></td><td>菜单扩展、状态同步、向各 OverlayWindow 传递样式、替换两处 Text、调整自然尺寸与窗口更新逻辑。</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">表中代码路径均相对 src/desktopMain/kotlin/top/ntutn/floatclock/。已实现并通过编译及 7 项测试（其中绘制测试覆盖多个字体、颜色和缩放组合）；未提交、未推送。测试报告位于 build/reports/tests/desktopTest/，离屏样图位于 build/reports/outline/。</p>
+
+  <h2>06 / 验收标准</h2>
+  <div class="table-scroll"><table>
+    <thead><tr><th>ID</th><th>场景</th><th>通过标准</th></tr></thead>
+    <tbody>
+      <tr><td>A1</td><td>无新字段的旧配置</td><td>样式、前景、背景、网速设置不变；描边默认关闭。</td></tr>
+      <tr><td>A2</td><td>从透明／黑／白背景开启与关闭</td><td>开启统一透明且背景禁用；关闭准确恢复原选择。</td></tr>
+      <tr><td>A3</td><td>黑白描边切换、关闭再开、重启</td><td>即时同步并持久化；互斥选择始终正确。</td></tr>
+      <tr><td>A4</td><td>普通／数码管／digital-7 缺失回退</td><td>字形内有原色填充，外轮廓连续；两遍无错位、无空心。</td></tr>
+      <tr><td>A5</td><td>时间 00:00、11:11、23:59；网速箭头及 B/s、KB/s、MB/s 文本</td><td>数字、冒号、箭头、大小写单位均完整，小字内部空隙不被明显堵塞。</td></tr>
+      <tr><td>A6</td><td>浅色、深色和复杂桌面背景</td><td>合适描边色下可辨认；透明区域不出现矩形底色、阴影或棋盘格。</td></tr>
+      <tr><td>A7</td><td>100%、125%、150%、200% 缩放与跨屏／热插拔</td><td>适用平台上粗细随 density 一致；顶部、底部和两端无裁切。</td></tr>
+      <tr><td>A8</td><td>网速由短变长，开关描边／网速／样式</td><td>窗口能扩展并在配置变化后重新收敛；同一配置内不每秒来回缩放。</td></tr>
+      <tr><td>A9</td><td>多屏、快速连续操作、模拟写入失败</td><td>最后一次操作获胜；所有窗口和菜单一致；失败回退且保留异常日志。</td></tr>
+      <tr><td>A10</td><td>关闭描边与原版比较；拖动、双击、右键、置顶</td><td>关闭时排版视觉等价；原交互有效，没有重复文本语义。</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>自动化验证：</strong>针对旧 JSON 默认值、未知颜色归一化、背景状态转换、持久化往返和自然尺寸增长增加有行为价值的测试。绘制使用透明离屏图像检查外轮廓存在、内部填充色不变及透明安全区无越界；跨平台抗锯齿采用容差，不要求逐像素完全一致。</p>
+  <p><strong>实机验证：</strong>完成桌面编译后，在 macOS、Windows、Linux 可用环境执行对应检查；无法覆盖的平台明确标为待验证。重点先验证 digital-7 的 48.sp 描边和 14.sp 网速，不以 HTML 示意代替实机截图。</p>
+
+  <h2>07 / 风险与交付顺序</h2>
+  <ol>
+    <li><strong>先验证渲染：</strong>在现有依赖上完成最小双遍绘制样例，检查数码管细缝、箭头回退与高 DPI；若不通过，先定位测量、裁切或字体问题，再重新评审方案。</li>
+    <li><strong>再接状态与菜单：</strong>完成持久化和有效背景派生，再接入两个文本组件及全部窗口。</li>
+    <li><strong>最后验证尺寸和交互：</strong>修正自然尺寸测量、运行兼容与回归矩阵。未完成视觉验收前，线宽仅为设计初值。</li>
+  </ol>
+  <p>本期不增加自定义描边色、线宽滑块、发光、阴影或系统自动配色；这些不属于当前需求。</p>
+  <footer class="meta" style="margin-top:48px;border-top:1px solid var(--line);padding-top:20px">FloatClock · 描边功能实现规格 · 依据当前仓库源码与 Compose 1.8.2 API 核对</footer>
+</main>
+</body>
+</html>

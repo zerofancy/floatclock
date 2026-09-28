@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.window.WindowDraggableArea
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -32,7 +31,11 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainWidth
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -64,11 +67,14 @@ import java.text.SimpleDateFormat
 import javax.swing.JCheckBoxMenuItem
 import javax.swing.JDialog
 import javax.swing.JMenu
+import javax.swing.ButtonGroup
+import javax.swing.JRadioButtonMenuItem
 import javax.swing.JPopupMenu
 import javax.swing.SwingUtilities
 import javax.swing.event.PopupMenuEvent
 import javax.swing.event.PopupMenuListener
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.text.platform.Font as PlatformFont
@@ -87,7 +93,6 @@ private val DOUBLE_CLICK_INTERVAL_MS: Long by lazy {
     (Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval") as? Number)?.toLong() ?: 300L
 }
 private val REPOSITION_DELAYS_MS = listOf(150L, 500L, 1200L)
-private val DefaultClockColor = Color(0xFF1A3B32)
 internal const val DEFAULT_BACKGROUND = "transparent"
 private val BACKGROUND_COLORS = linkedMapOf(
     "transparent" to Color.Transparent,
@@ -99,7 +104,6 @@ private val BACKGROUND_LABELS = linkedMapOf(
     "black" to "黑色",
     "white" to "白色",
 )
-private const val DEFAULT_STYLE = "digital"
 private val isMacOS = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
 private val isWindows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
 private val isAutoStartSupported: Boolean get() = AutoStart.isSupported()
@@ -155,16 +159,21 @@ fun main() {
         var screenRevision by remember { mutableStateOf(0) }
         var text by remember { mutableStateOf("00:00") }
         var aboutVisible by remember { mutableStateOf(false) }
-        var clockTextColor by remember { mutableStateOf(DefaultClockColor) }
-        var clockBackgroundColor by remember { mutableStateOf(Color.Transparent) }
-        var clockStyle by remember { mutableStateOf(DEFAULT_STYLE) }
-        var showNetSpeed by remember { mutableStateOf(false) }
         val themeDataStore = remember { DataStoreFactory().createThemeDataStore() }
+        val settings = remember(themeDataStore) { ClockSettings(themeDataStore) }
+        val appearance = settings.model.appearance()
+        LaunchedEffect(settings) { settings.run() }
         val scope = rememberCoroutineScope()
         val digitalFontFamily = remember { loadDigitalFontFamily() }
         val styleMenuDigitalItem = remember { JCheckBoxMenuItem("数码管样式") }
         val styleMenuNormalItem = remember { JCheckBoxMenuItem("普通样式") }
         val showNetSpeedMenuItem = remember { JCheckBoxMenuItem("显示网速") }
+        val showOutlineMenuItem = remember { JCheckBoxMenuItem("显示描边") }
+        val outlineMenu = remember { JMenu("描边颜色") }
+        val backgroundMenu = remember { JMenu("背景色") }
+        val outlineMenuItems = remember {
+            OutlineColors.keys.associateWith { JRadioButtonMenuItem(BACKGROUND_LABELS.getValue(it)) }
+        }
         val loginItemMenuItem = remember { JCheckBoxMenuItem("开机启动") }
         val backgroundMenuItems =
             BACKGROUND_COLORS.keys.associateWith { remember(it) { JCheckBoxMenuItem(BACKGROUND_LABELS.getValue(it)) } }
@@ -172,9 +181,8 @@ fun main() {
         // 双击悬浮窗与菜单“随机”共用的换色逻辑：随机一个清晰悦目的前景色并持久化。
         val applyRandomColor: () -> Unit = remember {
             {
-                val awtColor = randomPleasingColor(clockTextColor)
-                clockTextColor = Color(awtColor.rgb)
-                scope.launch { themeDataStore.updateColor(awtColor) }
+                val awtColor = randomPleasingColor(settings.model.appearance().foreground)
+                settings.update { it.copy(colorR = awtColor.red, colorG = awtColor.green, colorB = awtColor.blue) }
             }
         }
 
@@ -199,37 +207,20 @@ fun main() {
             }
         }
 
-        LaunchedEffect(themeDataStore) {
-            themeDataStore.themeData().collect { model ->
-                clockTextColor = Color(AwtColor(model.colorR, model.colorG, model.colorB).rgb)
-                val resolvedStyle =
-                    if (model.theme == "digital" || model.theme == "normal") model.theme else DEFAULT_STYLE
-                if (clockStyle != resolvedStyle) {
-                    clockStyle = resolvedStyle
+        LaunchedEffect(appearance, settings.ready) {
+            withContext(Dispatchers.Swing) {
+                styleMenuDigitalItem.isSelected = appearance.style == "digital"
+                styleMenuNormalItem.isSelected = appearance.style == "normal"
+                showNetSpeedMenuItem.isSelected = appearance.showNetSpeed
+                showOutlineMenuItem.isSelected = appearance.showOutline
+                showOutlineMenuItem.isEnabled = settings.ready
+                outlineMenu.isEnabled = settings.ready && appearance.showOutline
+                outlineMenuItems.forEach { (name, item) -> item.isSelected = name == appearance.outlineName }
+                backgroundMenu.isEnabled = settings.ready && !appearance.showOutline
+                backgroundMenu.text = if (appearance.showOutline) "背景色（描边时固定透明）" else "背景色"
+                backgroundMenuItems.forEach { (name, item) ->
+                    item.isSelected = BACKGROUND_COLORS.getValue(name) == appearance.background
                 }
-                if (showNetSpeed != model.showNetSpeed) {
-                    showNetSpeed = model.showNetSpeed
-                }
-                val resolvedBackground =
-                    if (model.backgroundColor in BACKGROUND_COLORS.keys) model.backgroundColor else DEFAULT_BACKGROUND
-                clockBackgroundColor = BACKGROUND_COLORS.getValue(resolvedBackground)
-            }
-        }
-
-        // 同步样式菜单项的勾选状态
-        LaunchedEffect(clockStyle) {
-            styleMenuDigitalItem.isSelected = clockStyle == "digital"
-            styleMenuNormalItem.isSelected = clockStyle == "normal"
-        }
-
-        LaunchedEffect(showNetSpeed) {
-            showNetSpeedMenuItem.isSelected = showNetSpeed
-        }
-
-        LaunchedEffect(clockBackgroundColor) {
-            val selectedName = BACKGROUND_COLORS.entries.firstOrNull { it.value == clockBackgroundColor }?.key
-            backgroundMenuItems.forEach { (name, item) ->
-                item.isSelected = name == selectedName
             }
         }
 
@@ -248,23 +239,28 @@ fun main() {
             JPopupMenu().apply {
                 JMenu("时钟样式").apply {
                     styleMenuDigitalItem.addActionListener {
-                        clockStyle = "digital"
-                        scope.launch { themeDataStore.updateTheme("digital") }
+                        styleMenuDigitalItem.isSelected = true
+                        settings.update { it.copy(theme = "digital") }
                     }
                     styleMenuNormalItem.addActionListener {
-                        clockStyle = "normal"
-                        scope.launch { themeDataStore.updateTheme("normal") }
+                        styleMenuNormalItem.isSelected = true
+                        settings.update { it.copy(theme = "normal") }
                     }
                     add(styleMenuDigitalItem)
                     add(styleMenuNormalItem)
+                    addSeparator()
+                    showOutlineMenuItem.addActionListener {
+                        val selected = showOutlineMenuItem.isSelected
+                        settings.update { it.copy(showOutline = selected) }
+                    }
+                    add(showOutlineMenuItem)
                 }.also { add(it) }
                 addSeparator()
                 JMenu("前景色").apply {
                     PRESET_CLOCK_COLORS.forEach { (name, hex) ->
                         add(name).addActionListener {
                             val awtColor = AwtColor.decode(hex)
-                            clockTextColor = Color(awtColor.rgb)
-                            scope.launch { themeDataStore.updateColor(awtColor) }
+                            settings.update { it.copy(colorR = awtColor.red, colorG = awtColor.green, colorB = awtColor.blue) }
                         }
                     }
                     addSeparator()
@@ -272,18 +268,26 @@ fun main() {
                         applyRandomColor()
                     }
                 }.also { add(it) }
-                JMenu("背景色").apply {
+                backgroundMenu.apply {
                     backgroundMenuItems.forEach { (name, item) ->
                         item.addActionListener {
-                            clockBackgroundColor = BACKGROUND_COLORS.getValue(name)
-                            scope.launch { themeDataStore.updateBackgroundColor(name) }
+                            item.isSelected = true
+                            if (!settings.model.showOutline) settings.update { it.copy(backgroundColor = name) }
                         }
                         add(item)
                     }
                 }.also { add(it) }
+                val outlineGroup = ButtonGroup()
+                outlineMenuItems.forEach { (name, item) ->
+                    outlineGroup.add(item)
+                    item.addActionListener { settings.update { it.copy(outlineColor = name) } }
+                    outlineMenu.add(item)
+                }
+                add(outlineMenu)
                 addSeparator()
                 showNetSpeedMenuItem.addActionListener {
-                    scope.launch { themeDataStore.toggleShowNetSpeed() }
+                    val selected = showNetSpeedMenuItem.isSelected
+                    settings.update { it.copy(showNetSpeed = selected) }
                 }
                 add(showNetSpeedMenuItem)
                 if (isAutoStartSupported) {
@@ -361,18 +365,20 @@ fun main() {
             }
         }
 
-        overlayTargets.forEach { target ->
+        if (settings.ready) overlayTargets.forEach { target ->
             key(target.id) {
                 OverlayWindow(
                     target = target,
                     screenRevision = screenRevision,
                     text = text,
-                    textColor = clockTextColor,
-                    backgroundColor = clockBackgroundColor,
+                    textColor = appearance.foreground,
+                    backgroundColor = appearance.background,
+                    showOutline = appearance.showOutline,
+                    outlineColor = appearance.outlineColor,
                     digitalFontFamily = digitalFontFamily,
-                    clockStyle = clockStyle,
+                    clockStyle = appearance.style,
                     contextMenu = contextMenu,
-                    showNetSpeed = showNetSpeed,
+                    showNetSpeed = appearance.showNetSpeed,
                     onRandomColor = applyRandomColor,
                 )
             }
@@ -392,6 +398,8 @@ private fun OverlayWindow(
     text: String,
     textColor: Color,
     backgroundColor: Color,
+    showOutline: Boolean,
+    outlineColor: Color,
     digitalFontFamily: FontFamily?,
     clockStyle: String,
     contextMenu: JPopupMenu,
@@ -401,12 +409,9 @@ private fun OverlayWindow(
     val graphicsConfiguration = target.graphicsConfiguration
     val windowTitle = "$OVERLAY_WINDOW_TITLE_PREFIX${target.id.hashCode().toUInt()}"
 
-    // Both width and height: settle once per configuration change (clockStyle / showNetSpeed).
-    // Use an initial large-enough size so the window is correct on the first frame.
+    // Content is measured independently of this provisional window size.
     var desiredWindowHeight by remember { mutableStateOf(180) }
     var desiredWindowWidth by remember { mutableStateOf(260) }
-    var sizeSettled by remember { mutableStateOf(false) }
-    LaunchedEffect(showNetSpeed, clockStyle) { sizeSettled = false }
 
     DialogWindow(
         create = {
@@ -458,14 +463,15 @@ private fun OverlayWindow(
             text = text,
             textColor = textColor,
             backgroundColor = backgroundColor,
+            showOutline = showOutline,
+            outlineColor = outlineColor,
             digitalFontFamily = digitalFontFamily,
             clockStyle = clockStyle,
             contextMenu = contextMenu,
             showNetSpeed = showNetSpeed,
             onRandomColor = onRandomColor,
             onContentSizeChanged = { w, h ->
-                if (!sizeSettled && w > 0 && h > 0) {
-                    sizeSettled = true
+                if (w > 0 && h > 0) {
                     desiredWindowWidth = w
                     desiredWindowHeight = h
                 }
@@ -480,6 +486,8 @@ private fun DialogWindowScope.FloatClockContent(
     text: String,
     textColor: Color,
     backgroundColor: Color,
+    showOutline: Boolean,
+    outlineColor: Color,
     digitalFontFamily: FontFamily?,
     clockStyle: String,
     contextMenu: JPopupMenu,
@@ -488,6 +496,8 @@ private fun DialogWindowScope.FloatClockContent(
     onContentSizeChanged: (width: Int, height: Int) -> Unit = { _, _ -> },
 ) {
     val dialog = window
+    val density = LocalDensity.current
+    val contentSize = remember(clockStyle, showNetSpeed, showOutline, density) { ClockContentSize() }
     val fontFamily = if (clockStyle == "digital" && digitalFontFamily != null) digitalFontFamily else null
 
     val netSpeedMonitor = remember { NetSpeedMonitor(1000) }
@@ -534,29 +544,44 @@ private fun DialogWindowScope.FloatClockContent(
         WindowDraggableArea {
             Box(
                 modifier = Modifier
+                    .layout { measurable, constraints ->
+                        // Measure natural content before applying the current window constraints.
+                        val placeable = measurable.measure(Constraints())
+                        val size = contentSize.include(
+                            ceil(placeable.width / density.density).toInt(),
+                            ceil(placeable.height / density.density).toInt(),
+                        )
+                        onContentSizeChanged(size.width, size.height)
+                        val width = constraints.constrainWidth(placeable.width)
+                        val height = constraints.constrainHeight(placeable.height)
+                        layout(width, height) {
+                            placeable.placeRelative((width - placeable.width) / 2, (height - placeable.height) / 2)
+                        }
+                    }
                     .background(backgroundColor)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                    .onSizeChanged { size ->
-                        if (size.height > 0) onContentSizeChanged(size.width, size.height)
-                    },
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
+                    OutlinedClockText(
                         text,
                         fontSize = 48.sp,
-                        maxLines = 1,
                         color = textColor,
                         fontFamily = fontFamily,
+                        showOutline = showOutline,
+                        outlineColor = outlineColor,
+                        outlineOutsideWidth = 1.dp,
                     )
                     if (showNetSpeed) {
                         Spacer(Modifier.height(if (clockStyle == "digital") 8.dp else 2.dp))
-                        Text(
+                        OutlinedClockText(
                             text = "↓ ${netSpeed.downBytesPerSec.humanBps()}   ↑ ${netSpeed.upBytesPerSec.humanBps()}",
                             fontSize = 14.sp,
-                            maxLines = 1,
                             color = textColor,
                             fontFamily = fontFamily,
+                            showOutline = showOutline,
+                            outlineColor = outlineColor,
+                            outlineOutsideWidth = 0.5.dp,
                         )
                     }
                 }

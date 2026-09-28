@@ -81,6 +81,12 @@ kotlin {
             implementation(libs.slf4j.api)
             runtimeOnly(libs.logback.classic)
         }
+
+        val desktopTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
     }
 }
 
