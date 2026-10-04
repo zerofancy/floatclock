@@ -52,6 +52,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.swing.Swing
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.painterResource
+import top.ntutn.floatclock.generated.resources.Res
+import top.ntutn.floatclock.generated.resources.clock
 import top.ntutn.floatclock.macos.MacOSWindowBridge
 import top.ntutn.floatclock.net.NetSpeedMonitor
 import top.ntutn.floatclock.net.humanBps
@@ -357,6 +360,7 @@ fun main() {
             ComposeWindow(
                 onCloseRequest = { aboutVisible = false },
                 title = "关于 ${BuildConfig.APP_NAME}",
+                icon = painterResource(Res.drawable.clock),
                 state = rememberWindowState(width = 400.dp, height = 300.dp),
                 resizable = false,
                 alwaysOnTop = true,
