@@ -10,8 +10,12 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.painterResource
@@ -36,7 +40,12 @@ fun AboutContent() {
             Text("作者：归零幻想 (zerofancy)", modifier = modifier)
             Spacer(modifier.height(8.dp))
             Text(buildAnnotatedString {
-                withLink(LinkAnnotation.Url(url)) {
+                withLink(LinkAnnotation.Url(
+                    url,
+                    styles = TextLinkStyles(
+                        style = SpanStyle(color = Color.Blue, textDecoration = TextDecoration.Underline)
+                    )
+                )) {
                     append(url)
                 }
             }, modifier = modifier)
