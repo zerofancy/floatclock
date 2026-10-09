@@ -76,13 +76,10 @@ import javax.swing.JPopupMenu
 import javax.swing.SwingUtilities
 import javax.swing.event.PopupMenuEvent
 import javax.swing.event.PopupMenuListener
-import kotlin.math.abs
 import kotlin.math.ceil
-import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.text.platform.Font as PlatformFont
 import androidx.compose.ui.window.Window as ComposeWindow
-import java.awt.Color as AwtColor
 
 private val logger = LoggerFactory.getLogger("FloatClock")
 
@@ -110,21 +107,6 @@ private val BACKGROUND_LABELS = linkedMapOf(
 private val isMacOS = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
 private val isWindows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
 private val isAutoStartSupported: Boolean get() = AutoStart.isSupported()
-
-// 限定在清晰、相对美观的色值范围内随机（HSB 色彩空间）
-private const val MIN_HUE_DISTANCE = 0.08f
-private val HSB_SATURATION_RANGE = 0.55f..0.85f
-private val HSB_BRIGHTNESS_RANGE = 0.45f..0.75f
-
-private val PRESET_CLOCK_COLORS = mapOf(
-    "高粱红" to "#c02c38",
-    "淡橘橙" to "#fba414",
-    "藤黄" to "#ffd111",
-    "深海绿" to "#1a3b32",
-    "钢蓝" to "#0f1423",
-    "靛青" to "#1661ab",
-    "檀紫" to "#381924",
-)
 
 private fun loadDigitalFontFamily(): FontFamily? {
     return runCatching {
@@ -181,13 +163,8 @@ fun main() {
         val backgroundMenuItems =
             BACKGROUND_COLORS.keys.associateWith { remember(it) { JCheckBoxMenuItem(BACKGROUND_LABELS.getValue(it)) } }
 
-        // 双击悬浮窗与菜单“随机”共用的换色逻辑：随机一个清晰悦目的前景色并持久化。
-        val applyRandomColor: () -> Unit = remember {
-            {
-                val awtColor = randomPleasingColor(settings.model.appearance().foreground)
-                settings.update { it.copy(colorR = awtColor.red, colorG = awtColor.green, colorB = awtColor.blue) }
-            }
-        }
+        val foregroundMenu = remember(settings) { ForegroundColorMenu(ForegroundPalette.load(), settings) }
+        val applyRandomColor: () -> Unit = remember(foregroundMenu) { { foregroundMenu.applyRandomColor() } }
 
         LaunchedEffect(Unit) {
             val dateFormat = SimpleDateFormat("HH:mm")
@@ -212,6 +189,7 @@ fun main() {
 
         LaunchedEffect(appearance, settings.ready) {
             withContext(Dispatchers.Swing) {
+                foregroundMenu.refresh()
                 styleMenuDigitalItem.isSelected = appearance.style == "digital"
                 styleMenuNormalItem.isSelected = appearance.style == "normal"
                 showNetSpeedMenuItem.isSelected = appearance.showNetSpeed
@@ -259,18 +237,7 @@ fun main() {
                     add(showOutlineMenuItem)
                 }.also { add(it) }
                 addSeparator()
-                JMenu("前景色").apply {
-                    PRESET_CLOCK_COLORS.forEach { (name, hex) ->
-                        add(name).addActionListener {
-                            val awtColor = AwtColor.decode(hex)
-                            settings.update { it.copy(colorR = awtColor.red, colorG = awtColor.green, colorB = awtColor.blue) }
-                        }
-                    }
-                    addSeparator()
-                    add("随机").addActionListener {
-                        applyRandomColor()
-                    }
-                }.also { add(it) }
+                add(foregroundMenu.menu)
                 backgroundMenu.apply {
                     backgroundMenuItems.forEach { (name, item) ->
                         item.addActionListener {
@@ -633,30 +600,6 @@ private fun moveToScreenBottomEnd(window: Window, graphicsConfiguration: Graphic
     val x = screenBounds.x + screenBounds.width - screenInsets.right - window.width
     val y = screenBounds.y + screenBounds.height - screenInsets.bottom - window.height
     window.setLocation(x, y)
-}
-
-private fun randomPleasingColor(currentColor: Color): AwtColor {
-    val rgb = (currentColor.value and 0xFFFFFFu).toInt()
-    val currentHue = AwtColor.RGBtoHSB(
-        (rgb shr 16) and 0xFF,
-        (rgb shr 8) and 0xFF,
-        rgb and 0xFF,
-        null,
-    )[0]
-    var hsb: FloatArray
-    do {
-        hsb = floatArrayOf(
-            Random.nextFloat(),
-            HSB_SATURATION_RANGE.start + Random.nextFloat() * (HSB_SATURATION_RANGE.endInclusive - HSB_SATURATION_RANGE.start),
-            HSB_BRIGHTNESS_RANGE.start + Random.nextFloat() * (HSB_BRIGHTNESS_RANGE.endInclusive - HSB_BRIGHTNESS_RANGE.start),
-        )
-    } while (hueDistance(hsb[0], currentHue) < MIN_HUE_DISTANCE)
-    return AwtColor.getHSBColor(hsb[0], hsb[1], hsb[2])
-}
-
-private fun hueDistance(a: Float, b: Float): Float {
-    val d = abs(a - b)
-    return minOf(d, 1f - d)
 }
 
 /**

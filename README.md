@@ -35,9 +35,10 @@ macOS 下支持多显示器，并可显示在其他应用的全屏 Space 之上�
 
 ## 致谢
 
-本项目参考或使用了以下项目或其中的一部分。
+本项目参考或使用了以下项目与资源。
 
 - [Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform)
 - [Jetpack DataStore (Okio)](https://developer.android.com/topic/libraries/architecture/datastore)
 - [digital-7 字体](https://www.dafont.com/digital-7.font)
+- [中国色](https://zhongguose.com/)：提供中国传统颜色数据，用于前景色菜单与随机换色。
 - [misc](https://github.com/jjYBdx4IL/misc)
