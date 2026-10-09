@@ -37,8 +37,13 @@ macOS 下支持多显示器，并可显示在其他应用的全屏 Space 之上�
 
 本项目参考或使用了以下项目与资源。
 
-- [Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform)
-- [Jetpack DataStore (Okio)](https://developer.android.com/topic/libraries/architecture/datastore)
-- [digital-7 字体](https://www.dafont.com/digital-7.font)
+- [Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform)：构建桌面界面、悬浮时钟窗口与交互。
+- [Jetpack DataStore (Okio)](https://developer.android.com/topic/libraries/architecture/datastore)：持久化保存颜色、时钟样式等应用设置。
+- [Kotlinx Coroutines](https://github.com/Kotlin/kotlinx.coroutines)：处理异步任务、状态流、定时刷新与 Swing 线程调度。
+- [Kotlinx Serialization](https://github.com/Kotlin/kotlinx.serialization)：序列化应用设置，并解析中国色 JSON 数据。
+- [OSHI](https://github.com/oshi/oshi)：读取网卡收发字节数，用于计算和显示实时网速。
+- [SLF4J](https://www.slf4j.org/)：提供统一的应用日志 API。
+- [Logback](https://logback.qos.ch/)：提供日志运行时实现，按配置输出应用日志。
+- [digital-7 字体](https://www.dafont.com/digital-7.font)：提供数码管样式的时钟字体。
 - [中国色](https://zhongguose.com/)：提供中国传统颜色数据，用于前景色菜单与随机换色。
-- [misc](https://github.com/jjYBdx4IL/misc)
+- [zClock Lite](https://apps.apple.com/us/app/zclock-lite-topmost-clock/id1489475245?mt=12)：提供桌面置顶时钟的产品灵感。

@@ -328,7 +328,7 @@ fun main() {
                 onCloseRequest = { aboutVisible = false },
                 title = "关于 ${BuildConfig.APP_NAME}",
                 icon = painterResource(Res.drawable.clock),
-                state = rememberWindowState(width = 400.dp, height = 300.dp),
+                state = rememberWindowState(width = 460.dp, height = 560.dp),
                 resizable = false,
                 alwaysOnTop = true,
             ) {
