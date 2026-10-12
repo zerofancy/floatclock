@@ -41,6 +41,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.buildconfig)
     alias(libs.plugins.kotlinx.serialization)
+    alias(libs.plugins.keepkit)
 }
 
 group = "top.ntutn"
@@ -123,9 +124,7 @@ compose.desktop {
                 menuGroup = "ntutn"
             }
         }
-        // Release minification / obfuscation rules.
-        // Without these, R8 may rewrite okio/datastore/jna/oshi classes in ways that cause
-        // VerifyError / UnsatisfiedLinkError at runtime (see compose-desktop.pro).
+        // KeepKit adds dependency rules; this file holds application and Compose compatibility rules.
         buildTypes.release.proguard {
             isEnabled.set(true)
             obfuscate.set(true)

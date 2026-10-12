@@ -1,4 +1,5 @@
 [versions]
+keepkit = "v0.2.4"
 compose-multiplatform = "1.8.2"
 kotlin = "2.2.0"
 kotlinx-coroutines = "1.10.2"
@@ -20,6 +21,7 @@ slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
 logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
 
 [plugins]
+keepkit = { id = "io.github.zerofancy.compose-desktop-keep-kit", version.ref = "keepkit" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
