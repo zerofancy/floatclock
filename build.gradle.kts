@@ -107,7 +107,8 @@ compose.desktop {
     application {
         mainClass = "top.ntutn.floatclock.FloatClock"
         nativeDistributions {
-            modules("java.compiler", "java.instrument", "jdk.unsupported")
+            // Logback's configuration initialization loads javax.naming.Context.
+            modules("java.compiler", "java.instrument", "java.naming", "jdk.unsupported")
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "floatclock"
             packageVersion = version.toString()

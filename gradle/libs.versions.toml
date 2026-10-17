@@ -1,5 +1,5 @@
 [versions]
-keepkit = "v0.2.4"
+keepkit = "v0.2.5"
 compose-multiplatform = "1.8.2"
 kotlin = "2.2.0"
 kotlinx-coroutines = "1.10.2"
