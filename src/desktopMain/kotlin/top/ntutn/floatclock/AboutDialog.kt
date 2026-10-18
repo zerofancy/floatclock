@@ -1,13 +1,17 @@
 package top.ntutn.floatclock
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Divider
 import androidx.compose.material.MaterialTheme
@@ -89,38 +93,47 @@ private val acknowledgements = listOf(
 
 @Composable
 fun AboutContent() {
-    Column(
-        modifier = Modifier.fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-    ) {
-        val centered = Modifier.align(Alignment.CenterHorizontally)
-        val projectUrl = "https://github.com/zerofancy/floatclock"
+    val scrollState = rememberScrollState()
 
-        Image(
-            painter = painterResource(Res.drawable.clock),
-            contentDescription = null,
-            modifier = centered.size(64.dp),
-        )
-        Spacer(Modifier.height(8.dp))
-        Text("${BuildConfig.APP_NAME} ${BuildConfig.APP_VERSION}", modifier = centered)
-        Spacer(Modifier.height(8.dp))
-        Text("作者：归零幻想 (zerofancy)", modifier = centered)
-        Spacer(Modifier.height(8.dp))
-        AboutLink(projectUrl, projectUrl, modifier = centered)
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+                .padding(end = 12.dp)
+                .verticalScroll(scrollState)
+                .padding(24.dp),
+        ) {
+            val centered = Modifier.align(Alignment.CenterHorizontally)
+            val projectUrl = "https://github.com/zerofancy/floatclock"
 
-        Spacer(Modifier.height(24.dp))
-        Divider()
-        Spacer(Modifier.height(16.dp))
-        Text("致谢", style = MaterialTheme.typography.h6)
-        Spacer(Modifier.height(8.dp))
-        Text("本项目参考或使用了以下项目与资源。")
-        acknowledgements.forEach { credit ->
-            Spacer(Modifier.height(12.dp))
-            AboutLink(credit.name, credit.url)
-            Spacer(Modifier.height(4.dp))
-            Text(credit.description, style = MaterialTheme.typography.body2)
+            Image(
+                painter = painterResource(Res.drawable.clock),
+                contentDescription = null,
+                modifier = centered.size(64.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            Text("${BuildConfig.APP_NAME} ${BuildConfig.APP_VERSION}", modifier = centered)
+            Spacer(Modifier.height(8.dp))
+            Text("作者：归零幻想 (zerofancy)", modifier = centered)
+            Spacer(Modifier.height(8.dp))
+            AboutLink(projectUrl, projectUrl, modifier = centered)
+
+            Spacer(Modifier.height(24.dp))
+            Divider()
+            Spacer(Modifier.height(16.dp))
+            Text("致谢", style = MaterialTheme.typography.h6)
+            Spacer(Modifier.height(8.dp))
+            Text("本项目参考或使用了以下项目与资源。")
+            acknowledgements.forEach { credit ->
+                Spacer(Modifier.height(12.dp))
+                AboutLink(credit.name, credit.url)
+                Spacer(Modifier.height(4.dp))
+                Text(credit.description, style = MaterialTheme.typography.body2)
+            }
         }
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(scrollState),
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+        )
     }
 }
 
