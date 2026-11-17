@@ -62,7 +62,7 @@ private val acknowledgements = listOf(
     Acknowledgement(
         "OSHI",
         "https://github.com/oshi/oshi",
-        "读取网卡收发字节数，用于计算和显示实时网速。",
+        "在 Windows、Linux 上读取网卡收发字节数；macOS 使用系统原生路由统计。",
     ),
     Acknowledgement(
         "SLF4J",

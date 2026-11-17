@@ -11,6 +11,7 @@
 
 # The macOS bridge is looked up by its fixed JNI class and method names.
 -keep class top.ntutn.floatclock.macos.MacOSWindowBridge { *; }
+-keep class top.ntutn.floatclock.macos.MacOSNetworkStats { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }

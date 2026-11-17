@@ -4,16 +4,17 @@ import org.gradle.api.tasks.Exec
 
 val generatedMacOSResources = layout.buildDirectory.dir("generated/macosResources")
 val macOSBridgeSource = layout.projectDirectory.file("src/desktopMain/native/macos/FloatClockMacOS.m")
+val macOSNetworkSource = layout.projectDirectory.file("src/desktopMain/native/macos/FloatClockNetworkStats.m")
 val macOSBridgeLibrary = generatedMacOSResources.map {
     it.file("native/macos/libfloatclock_macos.dylib")
 }
 
 val compileMacOSBridge by tasks.registering(Exec::class) {
     group = "build"
-    description = "Compiles the AppKit bridge used to configure the FloatClock NSWindow."
+    description = "Compiles the macOS window and network statistics bridges."
     onlyIf { System.getProperty("os.name").startsWith("Mac", ignoreCase = true) }
 
-    inputs.file(macOSBridgeSource)
+    inputs.files(macOSBridgeSource, macOSNetworkSource)
     outputs.file(macOSBridgeLibrary)
 
     doFirst {
@@ -30,6 +31,7 @@ val compileMacOSBridge by tasks.registering(Exec::class) {
             "-I$javaHome/include",
             "-I$javaHome/include/darwin",
             macOSBridgeSource.asFile.absolutePath,
+            macOSNetworkSource.asFile.absolutePath,
             "-o", outputFile.absolutePath,
         )
     }

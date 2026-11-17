@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FloatClock · 网速采集修复方案</title>
+  <style>
+    :root { color-scheme:light; --ink:#18332e; --muted:#60756e; --line:#dce5df; --accent:#176c53; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f4f6f2; color:var(--ink); font:16px/1.8 system-ui,-apple-system,"PingFang SC",sans-serif; }
+    main { max-width:1080px; margin:auto; padding:52px 30px 80px; }
+    header { border-bottom:2px solid var(--ink); padding-bottom:24px; }
+    .eyebrow { color:var(--accent); font-size:13px; letter-spacing:.1em; font-weight:700; }
+    h1 { font-size:38px; line-height:1.3; margin:14px 0; }
+    h2 { font-size:24px; margin:38px 0 14px; }
+    h3 { font-size:18px; margin:24px 0 10px; }
+    p { margin:10px 0; }
+    .lead { font-size:20px; }
+    .meta { color:var(--muted); font-size:14px; }
+    .callout { margin:22px 0; padding:18px 22px; background:#e5eee6; border-left:4px solid var(--accent); }
+    .table-scroll { overflow-x:auto; }
+    table { border-collapse:collapse; width:100%; background:white; font-size:14px; }
+    th,td { padding:12px 14px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:#eaf0e9; }
+    code { font:.9em/1.6 ui-monospace,SFMono-Regular,monospace; overflow-wrap:anywhere; }
+    pre { white-space:pre-wrap; padding:20px; border-radius:10px; background:#17352e; color:#e5eee6; overflow-wrap:anywhere; }
+    a { color:var(--accent); }
+    li { margin:7px 0; }
+    .flow { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:20px 0; }
+    .flow span { background:white; border:1px solid var(--line); border-radius:8px; padding:10px 14px; }
+    footer { margin-top:42px; padding-top:18px; border-top:1px solid var(--line); }
+    @media(max-width:640px) { main { padding:26px 16px 48px; } h1 { font-size:29px; } th,td { padding:9px; } }
+    @media print { body { background:white; } main { padding:0; } tr,pre { break-inside:avoid; } }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">FLOATCLOCK / FIX SPEC / 2026-11-17</div>
+    <h1>恢复 macOS 下载速度显示</h1>
+    <p class="lead">macOS 改用原生路由统计，按物理接口与根路由去重；上下行共用同一来源，所有时钟窗口共享一次采样。</p>
+    <p class="meta">状态：已实现，24 项测试、发布混淆和应用包内 JNI 采集验证通过。验证环境：本机 macOS 27.2.1，build 26B131。</p>
+  </header>
+
+  <h2>01 / 原因与证据</h2>
+  <p>当前 <a href="../src/desktopMain/kotlin/top/ntutn/floatclock/net/NetSpeedMonitor.kt">NetSpeedMonitor</a> 从 OSHI 读取网卡累计收发字节，再对相邻采样做差。<a href="../src/desktopMain/kotlin/top/ntutn/floatclock/FloatClock.kt">显示层</a>正确绑定下载与上传；故障发生在本机 <code>en0</code> 的 legacy 接收计数：实际下载成功，系统返回的接收累计值仍为 0。</p>
+  <div class="table-scroll"><table>
+    <thead><tr><th>检查</th><th>本机结果</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>受控 HTTPS 下载</td><td>HTTP 200，下载 257,229 字节；旧计数 RX 0 → 0，TX 18,329,766,025 → 18,330,130,086。</td><td>有真实接收流量，只有旧 RX 计数失效。</td></tr>
+      <tr><td>OSHI / netstat / getifaddrs / IFMIB</td><td>所有入口的 <code>en0</code> RX 均为 0；64 位 IFMIB 也如此。</td><td>更换 Java 映射或公开 ifnet 查询入口不能恢复这台机器的下载读数。</td></tr>
+      <tr><td>IOKit / Skywalk</td><td>网卡类为 <code>IOSkywalkLegacyEthernetInterface</code>；<code>IONetworkStatsKey</code> 全零；Skywalk 可见接收包计数，但所查接口没有可用的无提权接收字节数。</td><td>本次采用另一份已验证的字节统计。</td></tr>
+      <tr><td>原生 NetworkStatistics 路由探针</td><td>无需 root，连续得到 64 位 RX/TX；同一下载窗口根路由 RX 增加 395,346 字节，包含后台流量。</td><td>替代来源能在原来源失效时记录接收量。</td></tr>
+      <tr><td>父子路由计数</td><td>相同窗口直接汇总全部路由，RX 增加 790,548 字节，约为根路由的两倍。</td><td>必须依据父子关系去重。</td></tr>
+      <tr><td>本机通信</td><td>127.0.0.1 的 4 MiB 传输未产生对应物理流量；访问自己的局域网 IP 则记入一个无 <code>RTF_LOCAL</code> 的 <code>en0</code> 根路由。按本机地址过滤后，该传输被剔除 4,215,432 字节，同窗口保留的外部 RX 仅 79,785 字节。</td><td>本机地址过滤已复测有效，不能只过滤 loopback 网卡或依赖标志位。</td></tr>
+    </tbody>
+  </table></div>
+  <p>确定的原因是<strong>本机物理网卡的 legacy RX 计数没有随接收流量更新</strong>。Skywalk 接收链路未同步维护旧计数是机制推测；目前不能进一步归责到操作系统、驱动或某个网络扩展。<a href="https://github.com/aristocratos/btop/issues/1850">btop 的同类问题报告</a>提供了另一台 macOS 27 设备的旁证。</p>
+
+  <h3>同时修正 4 GiB 回绕漏报</h3>
+  <p><a href="https://github.com/oshi/oshi/blob/oshi-parent-6.6.5/oshi-core/src/main/java/oshi/driver/mac/net/NetStat.java">当前 OSHI 6.6.5 的 macOS 实现</a>把字节数截为 32 位；单个方向累计跨过 4 GiB 时，读数会回绕。现有“先汇总、后求差、负数归零”会使该轮速度漏报。<a href="https://github.com/oshi/oshi/blob/oshi-parent-6.9.0/oshi-core/src/main/java/oshi/driver/mac/net/NetStat.java">6.9.0</a>仍沿用这一实现。macOS 绕开该路径、保留原生 64 位计数，可一并消除这个问题。</p>
+
+  <h2>02 / 选定修法</h2>
+  <div class="callout"><strong>推荐：通过现有 macOS 原生库动态接入 NetworkStatistics 的 route provider。</strong>每秒读取一次完整快照，仅统计合格物理接口上的根路由，排除本机地址。Windows、Linux 继续使用 OSHI。macOS 统一使用路由来源，不靠“上传多、下载少”的启发式切换统计源。</div>
+  <div class="table-scroll"><table>
+    <thead><tr><th>路径</th><th>结果与取舍</th></tr></thead>
+    <tbody>
+      <tr><td>升级 OSHI / 换公开 ifnet 入口</td><td>本机已证明同一 RX 计数失效，不能解决持续零速。</td></tr>
+      <tr><td>常驻 nettop 子进程</td><td>可以读到流量，但路由 CSV 展示不如原生描述直接提供稳定的 route ID、parent ID 与 ifindex；还要维护进程和文本解析。保留作排查工具。</td></tr>
+      <tr><td><strong>原生 route provider</strong></td><td><strong>选用。</strong>本机探针已验证，无需提权；直接获取路由身份、层级和 64 位字节数，可控制去重及生命周期。</td></tr>
+    </tbody>
+  </table></div>
+  <p>统计口径定为<strong>物理接口上的 IP 路由收发速度</strong>。通过排除隧道内层和本机通信，避免代理链与回环造成的重复；下载、上传均来自同一口径。</p>
+
+  <h2>03 / 采集与计算约定</h2>
+  <div class="flow" aria-label="网速数据流">
+    <span>原生路由快照</span> → <span>物理接口、根路由、本机地址过滤</span> → <span>逐源差分</span> → <span>共享 StateFlow</span> → <span>所有时钟窗口</span>
+  </div>
+
+  <h3>路由选择</h3>
+  <ol>
+    <li>读取描述中的 <code>route ID</code>、<code>parent ID</code>、<code>ifindex</code>、<code>flags</code>、目的地址及掩码。通过 <code>ifindex</code> 映射系统网卡，延续现有虚拟接口排除范围，排除 loopback、utun、awdl 等。</li>
+    <li>仅选择明确 <code>parent ID == 0</code> 的根路由。子路由已累计到父路由，不再单独相加；即使只使用默认路由也会漏掉局域网和其他独立路由，因此应选择全部合格根路由。</li>
+    <li>排除 <code>RTF_LOCAL</code>，并依据当前网卡地址排除<strong>目的地址等于本机 IPv4/IPv6 地址的 host route</strong>。通过 /32、/128 掩码识别 host，不能只看 <code>RTF_HOST</code>；地址作数值比较，IPv6 link-local 同时处理 scope。只匹配本机地址，不按整个局域网网段过滤。每轮采样刷新网卡与本机地址，直接覆盖网络配置变动。</li>
+    <li>明确区分字段缺失与数值为 0。描述未就绪的路由不被当成根；父 ID 非零但父源暂未解析时，也不升级为根。初始化或候选根数据不完整时显示等待状态，下一轮完整采样恢复。</li>
+  </ol>
+  <p><a href="https://github.com/apple-oss-distributions/xnu/blob/main/bsd/net/ntstat.c">Apple 的 nstat_route_rx / nstat_route_tx</a>沿 <code>rt_parent</code> 更新祖先计数，支持上述根路由去重规则。</p>
+
+  <h3>逐源计算</h3>
+  <pre><code>source = macOS: route ID + ifindex
+         Windows / Linux: 系统网卡标识
+
+elapsed = 本次与上次采样的单调时间差
+down = Σ(有效且连续的源.recv - 上次该源.recv) / elapsed
+up   = Σ(有效且连续的源.sent - 上次该源.sent) / elapsed</code></pre>
+  <ul>
+    <li>macOS 全程使用 64 位计数；采样时间使用 <code>System.nanoTime()</code>。调整系统时间不影响速率。</li>
+    <li>每个根路由分别保存基线后求和，不能对全体源的历史累计总和直接求差。新出现或计数重置的源只建立基线；移除的源清理基线，避免网络切换时产生巨幅尖峰或把其他源的速度抵消。</li>
+    <li>同一轮上下行必须来自同一个完整快照。采集失败的源不复用旧计数伪造正常速度；恢复后重新建立基线。</li>
+    <li>单次查询未完成时不重叠发起下一次查询。使用实际单调时间间隔计算，不能固定除以 1 秒。</li>
+  </ul>
+
+  <h3>线程、生命周期与显示</h3>
+  <ul>
+    <li>将 <code>NetSpeedMonitor</code> 从每个 <code>FloatClockContent</code> 上移到 <code>application</code> 会话层。所有显示器订阅同一个 <code>StateFlow</code>；打开“显示网速”时启动，关闭或退出时停止并释放原生 manager。</li>
+    <li>原生 manager、路由表和回调由同一条专用串行队列管理。Kotlin 在 IO 协程请求采样，原生查询完成后交付不可变快照；EDT 与 AppKit 主线程不等待采样完成。Objective-C 类统一使用 <code>FloatClockNetwork</code> 前缀，与系统 framework 的全局类名隔离。</li>
+    <li>启动初始化及采集失败显示 <code>↓ --   ↑ --</code>；完整有效的空闲样本显示 <code>0 B/s</code>。可用状态可通过 <code>StateFlow&lt;NetSpeed?&gt;</code> 表达，无需增加配置开关。</li>
+    <li>动态加载 framework 并检查所需符号。加载失败或查询超时返回不可用，保留时钟运行；关闭再打开网速会重新初始化。不把已知异常的旧 RX 来源作为成功结果。</li>
+    <li>遵循现有 SLF4J 规范：固定简单名称 logger，异常作为最后参数；初始化或可用状态变化记一次 WARN，诊断采样只用 DEBUG。JNI 将错误传给 Kotlin 记录。</li>
+  </ul>
+
+  <h2>04 / 实现落点</h2>
+  <div class="table-scroll"><table>
+    <thead><tr><th>位置</th><th>修改内容</th></tr></thead>
+    <tbody>
+      <tr><td><code>net/NetSpeedMonitor.kt</code></td><td>选择平台采集入口；逐源基线、单调时间、不可用状态与停止后重置。Windows/Linux 保留 OSHI 网卡过滤和读取方式。</td></tr>
+      <tr><td>新增 <code>macos/MacOSNetworkStats.kt</code></td><td>封装路由快照的 JNI 调用，复用现有 macOS dylib 加载入口。</td></tr>
+      <tr><td>新增 <code>native/macos/FloatClockNetworkStats.m</code></td><td>动态读取 NetworkStatistics，维护路由描述和计数，原生串行队列查询、停止及释放。读取当前本机地址，用于 host route 排除。</td></tr>
+      <tr><td><code>FloatClock.kt</code></td><td>会话级共享采样器；向各窗口传入网速状态；为初始化和不可用状态显示 --。</td></tr>
+      <tr><td><code>build.gradle.kts</code> / <code>compose-desktop.pro</code></td><td>将新增原生源纳入现有 dylib 编译输入，保留新增 JNI 类及方法名。无需新增第三方运行时依赖。</td></tr>
+      <tr><td><code>desktopTest</code> / 致谢文案</td><td>增加有行为价值的采集计算测试；同步 README 与 About 中 OSHI 仅承担 Windows/Linux 采集的描述。</td></tr>
+    </tbody>
+  </table></div>
+  <p class="meta">Kotlin 路径相对 src/desktopMain/kotlin/top/ntutn/floatclock/，原生路径相对 src/desktopMain/。原生采集、共享采样器、逐源计算、不可用显示及 JNI 打包规则均已实现。</p>
+
+  <h2>05 / 验收</h2>
+  <p>实施时优先验证会导致错数的分支；单元测试使用明确字节差和时间差，不依赖实时联网。</p>
+  <div class="table-scroll"><table>
+    <thead><tr><th>场景</th><th>通过标准</th><th>发现失败后的处理</th></tr></thead>
+    <tbody>
+      <tr><td>计数超过 4 GiB；多个源并行</td><td>64 位值连续；一源重置或新增不影响其他源的增量。</td><td>修正计数映射与逐源基线，禁止总和直接做差。</td></tr>
+      <tr><td>根路由、子路由、缺失描述</td><td>父子只计一次；缺失 parent 不被当成 0；局域网独立根路由保留。</td><td>修正根路由选择及快照就绪条件。</td></tr>
+      <tr><td>回环、本机局域网 IP、远端局域网 IP</td><td>前两者不产生对应网速；第三者正常计入。</td><td>修正 host route 与本机地址匹配，不扩大为网段过滤。</td></tr>
+      <tr><td>初始化、采集失败、恢复、关停重启</td><td>等待/失败为 --；有效空闲为 0；恢复无历史累计尖峰；停止后释放采集资源。</td><td>修正状态转换、基线重建和原生生命周期。</td></tr>
+      <tr><td>本机持续下载与上传，IPv4 / IPv6</td><td>两方向均随受控传输变化；与同窗口 nettop 根路由口径一致；不要求等于文件净载荷。</td><td>先定位来源、过滤与采样窗口，再修采集层。</td></tr>
+      <tr><td>CorpLink / 其他实际使用的 VPN；网络切换与睡眠唤醒</td><td>内外层不重复；接口变化无累计量尖峰；唤醒后重新得到有效样本。</td><td>针对真实接口与路由变更修正过滤和基线。</td></tr>
+      <tr><td>多屏、网速开关、发布混淆包</td><td>所有窗口数值一致且只有一个采样器；关闭后无查询；发布包能加载 JNI 和原生资源。</td><td>修会话层持有方式、停止逻辑或打包保留规则。</td></tr>
+      <tr><td>Windows / Linux</td><td>既有 OSHI 网卡读数及显示可用，未引入 macOS framework 加载。</td><td>修平台入口分流；在实际平台完成回归。</td></tr>
+    </tbody>
+  </table></div>
+  <h3>实现验证结果</h3>
+  <ul>
+    <li><code>desktopTest</code> 全部 24 项通过，其中新增网速测试 11 项：覆盖实际时间间隔、4 GiB、来源增减、单方向重置、失败恢复，以及取消后立即重开的互斥与释放。</li>
+    <li>正式原生源完成 3 轮创建、采样、关闭循环，共 9 次完整快照；4 MiB 本机地址传输被排除；关闭后 session 已释放；注入未完成查询后 3 秒超时，后续查询不重叠。</li>
+    <li><code>proguardReleaseJars</code> 和 <code>createReleaseDistributable</code> 通过。使用生成应用包内的混淆 JAR、原生资源和 Kotlin bridge 完成 23 次实际采样及关闭后重开验证，无采集错误。</li>
+    <li>包内采集路径：HTTPS 下载 257,229 字节、上传 131,072 字节，均返回 HTTP 200。对应窗口采集 RX 366,999 字节、TX 302,719 字节，含各自窗口的后台流量；两个方向均正常更新。</li>
+  </ul>
+  <p>独立原生探针在约 8 秒内使用 0.03 秒 user + 0.07 秒 system，最大驻留约 8.1 MB。该小样本用于确认采集开销可控；持续运行性能和多屏原生交互仍需实机观察。构建使用本机 JDK 21；发布构建保留现有 Kotlin 元数据警告，任务成功。</p>
+
+  <h2>06 / Limitations</h2>
+  <ul>
+    <li><strong>私有系统 API：</strong>NetworkStatistics 不承诺跨版本 ABI 稳定，需要在支持的 macOS 版本上验证。当前方案面向已有桌面分发方式；App Store 分发需要另行评估。符号检查只能发现缺失入口，不能替代实机兼容性验收。</li>
+    <li><strong>统计口径：</strong>路由计数是 IP 层字节，含其自身的统计语义，不等于文件净载荷或完整物理链路帧字节。ARP、以太网/Wi-Fi 帧开销不计入，不用于计费。IPv4/IPv6 路由计数入口可参见 <a href="https://github.com/apple-oss-distributions/xnu/blob/main/bsd/netinet/ip_input.c">ip_input.c</a>、<a href="https://github.com/apple-oss-distributions/xnu/blob/main/bsd/netinet/ip_output.c">ip_output.c</a>、<a href="https://github.com/apple-oss-distributions/xnu/blob/main/bsd/netinet6/ip6_input.c">ip6_input.c</a> 与 <a href="https://github.com/apple-oss-distributions/xnu/blob/main/bsd/netinet6/nd6.c">nd6.c</a>。</li>
+    <li><strong>切换窗口：</strong>新建或重置源需要一轮基线；路由删除时尚未采到的尾部流量可能丢失。目标是稳定的实时显示，不做历史累计流量账本。</li>
+    <li><strong>验证边界：</strong>本机正式采集、包内混淆 JNI、受控上下行及自通信排除已验证。完整 VPN 模式、多物理网卡、睡眠唤醒、旧版 macOS、Windows/Linux 和完整应用的多屏交互仍待实机验收；包内验证使用系统 JDK 21 加载应用包 JAR，未覆盖打包运行时的完整 GUI 启动。底层 RX 计数未更新的具体系统责任仍未确定。</li>
+  </ul>
+
+  <footer class="meta">
+    <p>本机诊断材料：<a href="../build/reports/net-speed-diagnosis/controlled-traffic.json">受控下载与回环记录</a>、<a href="../build/reports/net-speed-diagnosis/self-address-filtered.json">本机地址过滤记录</a>、<a href="../build/reports/net-speed-diagnosis/route-probe.m">原生采集探针</a>、<a href="../build/reports/net-speed-diagnosis/native-cost.txt">探针开销</a>。这些材料位于被忽略的 build 目录，clean 后可被删除；关键测量结果已保留在本方案正文。</p>
+    <p>实现验证材料：<a href="../build/test-results/desktopTest/TEST-top.ntutn.floatclock.net.NetSpeedMonitorTest.xml">新增网速测试结果</a>、<a href="../build/reports/net-speed-diagnosis/native-implementation-check.json">正式原生生命周期与过滤</a>、<a href="../build/reports/net-speed-fix/packaged-network.json">应用包内上下行采集记录</a>、<a href="../build/reports/net-speed-fix/release-build.log">发布构建记录</a>。</p>
+    <p>macOS 应用：<code>build/compose/binaries/main-release/app/floatclock.app</code>。</p>
+  </footer>
+</main></body>
+</html>

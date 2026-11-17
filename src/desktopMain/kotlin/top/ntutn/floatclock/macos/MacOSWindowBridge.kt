@@ -164,7 +164,7 @@ object MacOSWindowBridge {
     }
 
     @Synchronized
-    private fun loadLibrary(): Boolean {
+    internal fun loadLibrary(): Boolean {
         if (libraryLoaded) {
             return true
         }
@@ -183,7 +183,7 @@ object MacOSWindowBridge {
             libraryLoaded = true
             true
         }.onFailure {
-            logger.error("Unable to load the macOS window bridge", it)
+            logger.error("Unable to load the macOS native bridge", it)
         }.getOrDefault(false)
     }
 

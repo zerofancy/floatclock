@@ -1,66 +1,135 @@
 package top.ntutn.floatclock.net
 
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
 import oshi.SystemInfo
 import oshi.hardware.NetworkIF
+import top.ntutn.floatclock.macos.MacOSNetworkStats
 
 data class NetSpeed(val downBytesPerSec: Long, val upBytesPerSec: Long)
 
-class NetSpeedMonitor(private val intervalMs: Long = 1_000L) {
-    private val hal = SystemInfo().hardware
-    private var prevRecv = 0L
-    private var prevSent = 0L
-    private var prevTs = 0L
+internal data class TrafficCounters(val received: Long, val sent: Long)
 
-    private val _speed = MutableStateFlow(NetSpeed(0, 0))
-    val speed: StateFlow<NetSpeed> = _speed
-    private var job: Job? = null
+internal interface TrafficCounterSource : AutoCloseable {
+    fun sample(): Map<String, TrafficCounters>
+    override fun close() = Unit
+}
 
-    fun start(scope: CoroutineScope) {
-        if (job?.isActive == true) return
-        job = scope.launch(Dispatchers.IO) {
-            while (isActive) {
-                sampleOnce()
-                delay(intervalMs)
+internal class TrafficRateCalculator {
+    private var previous: Map<String, TrafficCounters>? = null
+    private var previousNanos = 0L
+
+    fun reset() {
+        previous = null
+    }
+
+    fun sample(counters: Map<String, TrafficCounters>, nowNanos: Long): NetSpeed? {
+        val before = previous
+        val elapsed = nowNanos - previousNanos
+        previous = counters.toMap()
+        previousNanos = nowNanos
+        if (before == null || elapsed <= 0L) return null
+
+        var received = 0L
+        var sent = 0L
+        for ((id, value) in counters) {
+            val old = before[id] ?: continue
+            received += (value.received - old.received).coerceAtLeast(0L)
+            sent += (value.sent - old.sent).coerceAtLeast(0L)
+        }
+        return NetSpeed(
+            (received * 1_000_000_000.0 / elapsed).toLong(),
+            (sent * 1_000_000_000.0 / elapsed).toLong(),
+        )
+    }
+}
+
+class NetSpeedMonitor internal constructor(
+    private val intervalMs: Long,
+    private val sourceFactory: () -> TrafficCounterSource,
+    private val nanoTime: () -> Long,
+) {
+    constructor(intervalMs: Long = 1_000L) : this(intervalMs, ::platformCounterSource, System::nanoTime)
+
+    private val logger = LoggerFactory.getLogger("NetSpeedMonitor")
+    private val runMutex = Mutex()
+    private val _speed = MutableStateFlow<NetSpeed?>(null)
+    val speed: StateFlow<NetSpeed?> = _speed
+
+    /** One session owns the source until cancellation has finished closing it. */
+    suspend fun run() = withContext(Dispatchers.IO) {
+        runMutex.withLock {
+            _speed.value = null
+            val source = try {
+                sourceFactory()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                logger.warn("Unable to initialize network speed sampling", failure)
+                return@withLock
+            }
+            val calculator = TrafficRateCalculator()
+            var unavailable = false
+            try {
+                while (currentCoroutineContext().isActive) {
+                    try {
+                        val counters = source.sample()
+                        currentCoroutineContext().ensureActive()
+                        _speed.value = calculator.sample(counters, nanoTime())
+                        if (unavailable) logger.debug("Network speed sampling recovered")
+                        unavailable = false
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        calculator.reset()
+                        _speed.value = null
+                        if (!unavailable) logger.warn("Network speed sampling is unavailable", failure)
+                        unavailable = true
+                    }
+                    delay(intervalMs)
+                }
+            } finally {
+                _speed.value = null
+                try {
+                    source.close()
+                } catch (failure: Exception) {
+                    logger.warn("Unable to close network speed sampling", failure)
+                }
             }
         }
     }
+}
 
-    fun stop() {
-        job?.cancel()
-    }
+private fun platformCounterSource(): TrafficCounterSource =
+    if (System.getProperty("os.name").startsWith("Mac", ignoreCase = true)) MacOSNetworkStats()
+    else OshiTrafficCounterSource()
 
-    private fun sampleOnce() {
-        var totalRecv = 0L
-        var totalSent = 0L
+private class OshiTrafficCounterSource : TrafficCounterSource {
+    private val hal = SystemInfo().hardware
+
+    override fun sample(): Map<String, TrafficCounters> = buildMap {
         for (nif in hal.networkIFs) {
-            nif.updateAttributes()
+            val updated = nif.updateAttributes()
             if (!nif.isValidCandidate()) continue
-            totalRecv += nif.bytesRecv
-            totalSent += nif.bytesSent
+            check(updated) { "Unable to update network interface ${nif.name}" }
+            val id = "${nif.queryNetworkInterface().index}:${nif.name}"
+            put(id, TrafficCounters(nif.bytesRecv, nif.bytesSent))
         }
-        val now = System.currentTimeMillis()
-        if (prevTs > 0) {
-            val dt = (now - prevTs).coerceAtLeast(1)
-            val down = ((totalRecv - prevRecv) * 1000.0 / dt).toLong().coerceAtLeast(0)
-            val up = ((totalSent - prevSent) * 1000.0 / dt).toLong().coerceAtLeast(0)
-            _speed.value = NetSpeed(down, up)
-        }
-        prevRecv = totalRecv
-        prevSent = totalSent
-        prevTs = now
     }
 
     private fun NetworkIF.isValidCandidate(): Boolean {
         if (runCatching { queryNetworkInterface().isLoopback }.getOrDefault(false)) return false
-        // macOS/部分 Linux 驱动无法拿到 ifOperStatus，通常返回 UNKNOWN；
+        // 部分 Linux 驱动无法拿到 ifOperStatus，通常返回 UNKNOWN；
         // 这里只排除明确 DOWN/NOT_PRESENT/LOWER_LAYER_DOWN，保留 UP/UNKNOWN/DORMANT/TESTING 等。
         when (ifOperStatus) {
             NetworkIF.IfOperStatus.DOWN,

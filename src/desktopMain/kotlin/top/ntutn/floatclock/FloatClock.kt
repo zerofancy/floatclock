@@ -56,6 +56,7 @@ import org.jetbrains.compose.resources.painterResource
 import top.ntutn.floatclock.generated.resources.Res
 import top.ntutn.floatclock.generated.resources.clock
 import top.ntutn.floatclock.macos.MacOSWindowBridge
+import top.ntutn.floatclock.net.NetSpeed
 import top.ntutn.floatclock.net.NetSpeedMonitor
 import top.ntutn.floatclock.net.humanBps
 import top.ntutn.floatclock.storage.DataStoreFactory
@@ -147,6 +148,11 @@ fun main() {
         val themeDataStore = remember { DataStoreFactory().createThemeDataStore() }
         val settings = remember(themeDataStore) { ClockSettings(themeDataStore) }
         val appearance = settings.model.appearance()
+        val netSpeedMonitor = remember { NetSpeedMonitor() }
+        val netSpeed by netSpeedMonitor.speed.collectAsState()
+        LaunchedEffect(settings.ready, appearance.showNetSpeed) {
+            if (settings.ready && appearance.showNetSpeed) netSpeedMonitor.run()
+        }
         LaunchedEffect(settings) { settings.run() }
         val scope = rememberCoroutineScope()
         val digitalFontFamily = remember { loadDigitalFontFamily() }
@@ -350,6 +356,7 @@ fun main() {
                     clockStyle = appearance.style,
                     contextMenu = contextMenu,
                     showNetSpeed = appearance.showNetSpeed,
+                    netSpeed = netSpeed,
                     onRandomColor = applyRandomColor,
                 )
             }
@@ -375,6 +382,7 @@ private fun OverlayWindow(
     clockStyle: String,
     contextMenu: JPopupMenu,
     showNetSpeed: Boolean,
+    netSpeed: NetSpeed?,
     onRandomColor: () -> Unit,
 ) {
     val graphicsConfiguration = target.graphicsConfiguration
@@ -440,6 +448,7 @@ private fun OverlayWindow(
             clockStyle = clockStyle,
             contextMenu = contextMenu,
             showNetSpeed = showNetSpeed,
+            netSpeed = netSpeed,
             onRandomColor = onRandomColor,
             onContentSizeChanged = { w, h ->
                 if (w > 0 && h > 0) {
@@ -463,6 +472,7 @@ private fun DialogWindowScope.FloatClockContent(
     clockStyle: String,
     contextMenu: JPopupMenu,
     showNetSpeed: Boolean,
+    netSpeed: NetSpeed?,
     onRandomColor: () -> Unit,
     onContentSizeChanged: (width: Int, height: Int) -> Unit = { _, _ -> },
 ) {
@@ -471,13 +481,6 @@ private fun DialogWindowScope.FloatClockContent(
     val contentSize = remember(clockStyle, showNetSpeed, showOutline, density) { ClockContentSize() }
     val fontFamily = if (clockStyle == "digital" && digitalFontFamily != null) digitalFontFamily else null
 
-    val netSpeedMonitor = remember { NetSpeedMonitor(1000) }
-    val cs = rememberCoroutineScope()
-    DisposableEffect(Unit) {
-        netSpeedMonitor.start(cs)
-        onDispose { netSpeedMonitor.stop() }
-    }
-    val netSpeed by netSpeedMonitor.speed.collectAsState()
 
     Box(
         modifier = Modifier
@@ -546,7 +549,7 @@ private fun DialogWindowScope.FloatClockContent(
                     if (showNetSpeed) {
                         Spacer(Modifier.height(if (clockStyle == "digital") 8.dp else 2.dp))
                         OutlinedClockText(
-                            text = "↓ ${netSpeed.downBytesPerSec.humanBps()}   ↑ ${netSpeed.upBytesPerSec.humanBps()}",
+                            text = "↓ ${netSpeed?.downBytesPerSec?.humanBps() ?: "--"}   ↑ ${netSpeed?.upBytesPerSec?.humanBps() ?: "--"}",
                             fontSize = 14.sp,
                             color = textColor,
                             fontFamily = fontFamily,
