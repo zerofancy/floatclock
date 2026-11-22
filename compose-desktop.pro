@@ -20,6 +20,17 @@
 # Names are preserved while unreachable classes and members can still be removed.
 -keepnames class androidx.compose.** { *; }
 
+# FlatLaf loads UI delegates and properties by class name and accesses style fields reflectively.
+# Keep the library intact so release obfuscation does not break these dynamic lookups.
+-keep class com.formdev.flatlaf.** { *; }
+
+# ProGuard reports signature-polymorphic MethodHandle.invoke calls as missing methods.
+# Suppress only the FlatLaf callers that trigger this false positive.
+-dontwarn com.formdev.flatlaf.ui.FlatPopupFactory
+-dontwarn com.formdev.flatlaf.ui.FlatStylingSupport
+-dontwarn com.formdev.flatlaf.ui.JavaCompatibility2
+-dontwarn com.formdev.flatlaf.util.JavaCompatibility
+
 # Optional references from the project's Compose / Kotlin versions.
 -dontwarn android.annotation.SuppressLint
 -dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement

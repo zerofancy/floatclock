@@ -1,5 +1,10 @@
 # FloatClock 项目规范
 
+## 依赖与致谢规范
+
+- 新增第三方库时，必须同步更新关于窗口（`src/desktopMain/kotlin/top/ntutn/floatclock/AboutDialog.kt`）与 `README.md` 的致谢列表，写明库名称、官方项目链接及其在本项目中的用途；仅在特定平台使用的库也不能遗漏。
+- 移除或替换第三方库时，同步清理或更新对应致谢，保持关于窗口、README 与实际依赖一致。
+
 ## 日志规范
 
 - 业务代码统一使用 SLF4J API，通过 `LoggerFactory` 获取类或文件级的私有 logger；Logback 是唯一运行时日志实现，不直接依赖其 API。

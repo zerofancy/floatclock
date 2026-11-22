@@ -2,6 +2,7 @@
 
 package top.ntutn.floatclock
 
+import com.formdev.flatlaf.FlatLightLaf
 import org.slf4j.LoggerFactory
 
 import androidx.compose.foundation.background
@@ -75,6 +76,7 @@ import javax.swing.ButtonGroup
 import javax.swing.JRadioButtonMenuItem
 import javax.swing.JPopupMenu
 import javax.swing.SwingUtilities
+import javax.swing.UIManager
 import javax.swing.event.PopupMenuEvent
 import javax.swing.event.PopupMenuListener
 import kotlin.math.ceil
@@ -139,6 +141,19 @@ fun main() {
     if (instanceLock == null) {
         logger.info("Another instance is already running. Exiting.")
         return
+    }
+    // Windows 默认 Swing 上下文菜单外观不佳，尤其子菜单箭头过于贴近右边界，
+    // 因此使用 FlatLaf 改善菜单样式和留白；Linux/macOS 表现正常，保留原有 L&F。
+    // 必须在创建任何 Swing 控件之前安装主题。
+    if (isWindows) {
+        SwingUtilities.invokeAndWait {
+            try {
+                UIManager.setLookAndFeel(FlatLightLaf())
+                logger.debug("Windows Swing look and feel initialized: {}", UIManager.getLookAndFeel().name)
+            } catch (exception: Exception) {
+                logger.warn("Failed to initialize FlatLaf on Windows; keeping the default look and feel", exception)
+            }
+        }
     }
     application {
         var overlayTargets by remember { mutableStateOf(currentOverlayTargets()) }

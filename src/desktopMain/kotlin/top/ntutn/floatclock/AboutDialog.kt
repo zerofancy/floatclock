@@ -45,6 +45,11 @@ private val acknowledgements = listOf(
         "构建桌面界面、悬浮时钟窗口与交互。",
     ),
     Acknowledgement(
+        "FlatLaf",
+        "https://www.formdev.com/flatlaf/",
+        "在 Windows 上提供现代化的 Swing 外观，改善上下文菜单样式与留白。",
+    ),
+    Acknowledgement(
         "Jetpack DataStore (Okio)",
         "https://developer.android.com/topic/libraries/architecture/datastore",
         "持久化保存颜色、时钟样式等应用设置。",

@@ -38,6 +38,7 @@ macOS 下支持多显示器，并可显示在其他应用的全屏 Space 之上�
 本项目参考或使用了以下项目与资源。
 
 - [Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform)：构建桌面界面、悬浮时钟窗口与交互。
+- [FlatLaf](https://www.formdev.com/flatlaf/)：在 Windows 上提供现代化的 Swing 外观，改善上下文菜单样式与留白。
 - [Jetpack DataStore (Okio)](https://developer.android.com/topic/libraries/architecture/datastore)：持久化保存颜色、时钟样式等应用设置。
 - [Kotlinx Coroutines](https://github.com/Kotlin/kotlinx.coroutines)：处理异步任务、状态流、定时刷新与 Swing 线程调度。
 - [Kotlinx Serialization](https://github.com/Kotlin/kotlinx.serialization)：序列化应用设置，并解析中国色 JSON 数据。

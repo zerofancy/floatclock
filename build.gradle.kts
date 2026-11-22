@@ -47,7 +47,7 @@ plugins {
 }
 
 group = "top.ntutn"
-version = "2.1.0"
+version = "2.1.1"
 
 buildConfig {
     buildConfigField("String", "APP_NAME", "\"${project.name}\"")
@@ -81,6 +81,7 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutines.swing)
             implementation(libs.oshi.core)
+            implementation(libs.flatlaf)
             implementation(libs.slf4j.api)
             runtimeOnly(libs.logback.classic)
         }
