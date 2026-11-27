@@ -136,6 +136,16 @@ static BOOL hostMask(NSData *destination, id mask) {
 @implementation FloatClockNetworkRoute
 @end
 
+static NSString *routeError(NSString *reason, FloatClockNetworkRoute *route, uint64_t generation) {
+    id identifier = field(route.descriptionFields, api.routeID);
+    id interface = field(route.descriptionFields, api.interface);
+    return [NSString stringWithFormat:@"%@ (routeID=%@, ifindex=%@)\ngeneration=%llu routeGeneration=%llu received=%@ sent=%@",
+            reason, number(identifier) ? identifier : @"unknown", number(interface) ? interface : @"unknown",
+            (unsigned long long)generation, (unsigned long long)route.generation,
+            number(field(route.counts, api.received)) ? @"yes" : @"no",
+            number(field(route.counts, api.sent)) ? @"yes" : @"no"];
+}
+
 @interface FloatClockNetworkRequest : NSObject
 @property(nonatomic, strong) dispatch_semaphore_t done;
 @property(nonatomic, strong) NSData *snapshot;
@@ -207,47 +217,37 @@ static BOOL hostMask(NSData *destination, id mask) {
     freeifaddrs(addresses);
 
     NSMutableData *snapshot = [NSMutableData new];
-    NSMutableSet *routeIDs = [NSMutableSet new];
-    for (FloatClockNetworkRoute *route in self.routes.allValues) {
-        id identifier = field(route.descriptionFields, api.routeID);
-        if (number(identifier)) [routeIDs addObject:identifier];
-    }
     for (FloatClockNetworkRoute *route in self.routes.allValues) {
         NSDictionary *description = route.descriptionFields;
         id identifier = field(description, api.routeID);
         id parent = field(description, api.parentID);
         id interface = field(description, api.interface);
         id flags = field(description, api.flags);
+        if (number(interface) && ![interfaces containsObject:interface]) continue;
+        // Child counters are already included in their root, whether or not the parent source is present.
+        if (number(parent) && [parent unsignedLongLongValue] != 0) continue;
         if (!number(interface) || !number(parent)) {
-            *error = @"Network route descriptions are not ready";
+            *error = routeError(@"Network route descriptions are not ready", route, self.generation);
             return nil;
-        }
-        if (![interfaces containsObject:interface]) continue;
-        if ([parent unsignedLongLongValue] != 0) {
-            if (![routeIDs containsObject:parent]) {
-                *error = @"A network route parent is not ready";
-                return nil;
-            }
-            continue;
         }
         id destination = field(description, api.destination);
         id received = field(route.counts, api.received);
         id sent = field(route.counts, api.sent);
         if (!number(identifier) || !number(flags) || ![destination isKindOfClass:[NSData class]]) {
-            *error = @"Network route descriptions are incomplete";
+            *error = routeError(@"Network route descriptions are incomplete", route, self.generation);
             return nil;
         }
         unsigned int routeFlags = [flags unsignedIntValue];
         if (!(routeFlags & RTF_UP) || (routeFlags & RTF_LOCAL)) continue;
         NSData *identity = addressIdentity([destination bytes], [destination length], [interface unsignedIntValue]);
         if (!identity) {
-            *error = @"Unsupported network route destination";
+            *error = routeError(@"Unsupported network route destination", route, self.generation);
             return nil;
         }
         BOOL host = (routeFlags & RTF_HOST) || hostMask(destination, field(description, api.mask));
         if (host && [localAddresses containsObject:identity]) continue;
         if (route.generation != self.generation || !number(received) || !number(sent)) {
-            *error = @"Network route counters are not ready";
+            *error = routeError(@"Network route counters are not ready", route, self.generation);
             return nil;
         }
         jlong values[] = {

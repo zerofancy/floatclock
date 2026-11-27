@@ -38,7 +38,7 @@
     <div class="eyebrow">FLOATCLOCK / FIX SPEC / 2026-11-17</div>
     <h1>恢复 macOS 下载速度显示</h1>
     <p class="lead">macOS 改用原生路由统计，按物理接口与根路由去重；上下行共用同一来源，所有时钟窗口共享一次采样。</p>
-    <p class="meta">状态：已实现，24 项测试、发布混淆和应用包内 JNI 采集验证通过。验证环境：本机 macOS 27.2.1，build 26B131。</p>
+    <p class="meta">状态：已实现，28 项 Kotlin 测试、5 项原生回归、发布混淆及真实 JNI 自动恢复验证通过。验证环境：本机 macOS 27.2.1，build 26B131。</p>
   </header>
 
   <h2>01 / 原因与证据</h2>
@@ -81,7 +81,7 @@
     <li>读取描述中的 <code>route ID</code>、<code>parent ID</code>、<code>ifindex</code>、<code>flags</code>、目的地址及掩码。通过 <code>ifindex</code> 映射系统网卡，延续现有虚拟接口排除范围，排除 loopback、utun、awdl 等。</li>
     <li>仅选择明确 <code>parent ID == 0</code> 的根路由。子路由已累计到父路由，不再单独相加；即使只使用默认路由也会漏掉局域网和其他独立路由，因此应选择全部合格根路由。</li>
     <li>排除 <code>RTF_LOCAL</code>，并依据当前网卡地址排除<strong>目的地址等于本机 IPv4/IPv6 地址的 host route</strong>。通过 /32、/128 掩码识别 host，不能只看 <code>RTF_HOST</code>；地址作数值比较，IPv6 link-local 同时处理 scope。只匹配本机地址，不按整个局域网网段过滤。每轮采样刷新网卡与本机地址，直接覆盖网络配置变动。</li>
-    <li>明确区分字段缺失与数值为 0。描述未就绪的路由不被当成根；父 ID 非零但父源暂未解析时，也不升级为根。初始化或候选根数据不完整时显示等待状态，下一轮完整采样恢复。</li>
+    <li>明确区分字段缺失与数值为 0。描述未就绪的路由不被当成根；已知子路由直接排除，无需等待其父源进入集合；已知非物理接口也先排除。候选根数据不完整时显示等待状态，并按下述恢复规则处理。</li>
   </ol>
   <p><a href="https://github.com/apple-oss-distributions/xnu/blob/main/bsd/net/ntstat.c">Apple 的 nstat_route_rx / nstat_route_tx</a>沿 <code>rt_parent</code> 更新祖先计数，支持上述根路由去重规则。</p>
 
@@ -104,8 +104,8 @@ up   = Σ(有效且连续的源.sent - 上次该源.sent) / elapsed</code></pre>
     <li>将 <code>NetSpeedMonitor</code> 从每个 <code>FloatClockContent</code> 上移到 <code>application</code> 会话层。所有显示器订阅同一个 <code>StateFlow</code>；打开“显示网速”时启动，关闭或退出时停止并释放原生 manager。</li>
     <li>原生 manager、路由表和回调由同一条专用串行队列管理。Kotlin 在 IO 协程请求采样，原生查询完成后交付不可变快照；EDT 与 AppKit 主线程不等待采样完成。Objective-C 类统一使用 <code>FloatClockNetwork</code> 前缀，与系统 framework 的全局类名隔离。</li>
     <li>启动初始化及采集失败显示 <code>↓ --   ↑ --</code>；完整有效的空闲样本显示 <code>0 B/s</code>。可用状态可通过 <code>StateFlow&lt;NetSpeed?&gt;</code> 表达，无需增加配置开关。</li>
-    <li>动态加载 framework 并检查所需符号。加载失败或查询超时返回不可用，保留时钟运行；关闭再打开网速会重新初始化。不把已知异常的旧 RX 来源作为成功结果。</li>
-    <li>遵循现有 SLF4J 规范：固定简单名称 logger，异常作为最后参数；初始化或可用状态变化记一次 WARN，诊断采样只用 DEBUG。JNI 将错误传给 Kotlin 记录。</li>
+    <li>动态加载 framework 并检查所需符号。初始化失败时按采样间隔自动重试；未恢复有效速度期间累计 3 次采样失败，先关闭旧 source，下一轮创建新会话并重建基线。首次成功基线继续显示 --，实际产生有效速率后才清空失败预算；因此失败与基线交替也能自动恢复。原生查询超时后关闭旧 manager，再创建新会话，避免叠加在飞查询。</li>
+    <li>遵循现有 SLF4J 规范：固定简单名称 logger，异常作为最后参数。失败类型或首行原因变化时记录一次 WARN；原生错误首行包含 route ID、ifindex，第二行包含当前代数、路由代数及计数字段就绪状态；代数变化不重复刷日志。重建和恢复使用 DEBUG。JNI 将错误传给 Kotlin 记录。</li>
   </ul>
 
   <h2>04 / 实现落点</h2>
@@ -117,7 +117,7 @@ up   = Σ(有效且连续的源.sent - 上次该源.sent) / elapsed</code></pre>
       <tr><td>新增 <code>native/macos/FloatClockNetworkStats.m</code></td><td>动态读取 NetworkStatistics，维护路由描述和计数，原生串行队列查询、停止及释放。读取当前本机地址，用于 host route 排除。</td></tr>
       <tr><td><code>FloatClock.kt</code></td><td>会话级共享采样器；向各窗口传入网速状态；为初始化和不可用状态显示 --。</td></tr>
       <tr><td><code>build.gradle.kts</code> / <code>compose-desktop.pro</code></td><td>将新增原生源纳入现有 dylib 编译输入，保留新增 JNI 类及方法名。无需新增第三方运行时依赖。</td></tr>
-      <tr><td><code>desktopTest</code> / 致谢文案</td><td>增加有行为价值的采集计算测试；同步 README 与 About 中 OSHI 仅承担 Windows/Linux 采集的描述。</td></tr>
+      <tr><td><code>desktopTest</code> / 致谢文案</td><td>覆盖计算、初始化重试、持续失败重建及取消释放；macOS 的 desktopTest 同时运行原生 provider 回归。README 与 About 同步平台采集来源。</td></tr>
     </tbody>
   </table></div>
   <p class="meta">Kotlin 路径相对 src/desktopMain/kotlin/top/ntutn/floatclock/，原生路径相对 src/desktopMain/。原生采集、共享采样器、逐源计算、不可用显示及 JNI 打包规则均已实现。</p>
@@ -130,7 +130,7 @@ up   = Σ(有效且连续的源.sent - 上次该源.sent) / elapsed</code></pre>
       <tr><td>计数超过 4 GiB；多个源并行</td><td>64 位值连续；一源重置或新增不影响其他源的增量。</td><td>修正计数映射与逐源基线，禁止总和直接做差。</td></tr>
       <tr><td>根路由、子路由、缺失描述</td><td>父子只计一次；缺失 parent 不被当成 0；局域网独立根路由保留。</td><td>修正根路由选择及快照就绪条件。</td></tr>
       <tr><td>回环、本机局域网 IP、远端局域网 IP</td><td>前两者不产生对应网速；第三者正常计入。</td><td>修正 host route 与本机地址匹配，不扩大为网段过滤。</td></tr>
-      <tr><td>初始化、采集失败、恢复、关停重启</td><td>等待/失败为 --；有效空闲为 0；恢复无历史累计尖峰；停止后释放采集资源。</td><td>修正状态转换、基线重建和原生生命周期。</td></tr>
+      <tr><td>初始化、采集失败、恢复、关停重启</td><td>等待/失败为 --；有效空闲为 0；未恢复速度期间累计 3 次失败后自动重建，初始化失败自动重试；恢复无历史累计尖峰；停止后释放采集资源。</td><td>修正状态转换、基线重建和原生生命周期。</td></tr>
       <tr><td>本机持续下载与上传，IPv4 / IPv6</td><td>两方向均随受控传输变化；与同窗口 nettop 根路由口径一致；不要求等于文件净载荷。</td><td>先定位来源、过滤与采样窗口，再修采集层。</td></tr>
       <tr><td>CorpLink / 其他实际使用的 VPN；网络切换与睡眠唤醒</td><td>内外层不重复；接口变化无累计量尖峰；唤醒后重新得到有效样本。</td><td>针对真实接口与路由变更修正过滤和基线。</td></tr>
       <tr><td>多屏、网速开关、发布混淆包</td><td>所有窗口数值一致且只有一个采样器；关闭后无查询；发布包能加载 JNI 和原生资源。</td><td>修会话层持有方式、停止逻辑或打包保留规则。</td></tr>
@@ -139,25 +139,26 @@ up   = Σ(有效且连续的源.sent - 上次该源.sent) / elapsed</code></pre>
   </table></div>
   <h3>实现验证结果</h3>
   <ul>
-    <li><code>desktopTest</code> 全部 24 项通过，其中新增网速测试 11 项：覆盖实际时间间隔、4 GiB、来源增减、单方向重置、失败恢复，以及取消后立即重开的互斥与释放。</li>
-    <li>正式原生源完成 3 轮创建、采样、关闭循环，共 9 次完整快照；4 MiB 本机地址传输被排除；关闭后 session 已释放；注入未完成查询后 3 秒超时，后续查询不重叠。</li>
-    <li><code>proguardReleaseJars</code> 和 <code>createReleaseDistributable</code> 通过。使用生成应用包内的混淆 JAR、原生资源和 Kotlin bridge 完成 23 次实际采样及关闭后重开验证，无采集错误。</li>
-    <li>包内采集路径：HTTPS 下载 257,229 字节、上传 131,072 字节，均返回 HTTP 200。对应窗口采集 RX 366,999 字节、TX 302,719 字节，含各自窗口的后台流量；两个方向均正常更新。</li>
+    <li><code>desktopTest</code> 全部 28 项 Kotlin 测试通过，其中网速测试 15 项，覆盖实际时间间隔、4 GiB、来源增减、计数重置、初始化重试、持续失败与基线交替时的自动重建，以及关闭期间取消的资源释放。</li>
+    <li>macOS 的 <code>desktopTest</code> 同时运行 5 项原生 fake provider 回归：不相关子路由及虚拟接口不阻塞健康根；真实候选根缺失或过期计数仍拒绝；就绪后恢复；3 秒超时及迟到完成不会允许重叠查询。原生测试以 <code>-Wall -Wextra -Werror</code> 编译。</li>
+    <li>独立进程使用正式 JNI 与 NetSpeedMonitor 注入 3 次持续失败，确认旧会话关闭、新会话自动恢复真实上下行，并在取消后释放全部 2 个会话。</li>
+    <li><code>proguardReleaseJars</code> 和 <code>createReleaseDistributable</code> 通过；应用包内混淆 JAR 与原生资源完成实际采样检查。构建使用本机 JDK 21。</li>
+    <li>本机 <code>/Applications/floatclock.app</code> 已更新并启动，两个时钟窗口正常显示。新实例启动时仅一次路由就绪等待，随后近一分钟未再抛出采样异常；旧应用已备份。</li>
   </ul>
-  <p>独立原生探针在约 8 秒内使用 0.03 秒 user + 0.07 秒 system，最大驻留约 8.1 MB。该小样本用于确认采集开销可控；持续运行性能和多屏原生交互仍需实机观察。构建使用本机 JDK 21；发布构建保留现有 Kotlin 元数据警告，任务成功。</p>
+  <p class="meta">自动恢复与原生回归验证日期：2026-11-26。</p>
 
   <h2>06 / Limitations</h2>
   <ul>
     <li><strong>私有系统 API：</strong>NetworkStatistics 不承诺跨版本 ABI 稳定，需要在支持的 macOS 版本上验证。当前方案面向已有桌面分发方式；App Store 分发需要另行评估。符号检查只能发现缺失入口，不能替代实机兼容性验收。</li>
     <li><strong>统计口径：</strong>路由计数是 IP 层字节，含其自身的统计语义，不等于文件净载荷或完整物理链路帧字节。ARP、以太网/Wi-Fi 帧开销不计入，不用于计费。IPv4/IPv6 路由计数入口可参见 <a href="https://github.com/apple-oss-distributions/xnu/blob/main/bsd/netinet/ip_input.c">ip_input.c</a>、<a href="https://github.com/apple-oss-distributions/xnu/blob/main/bsd/netinet/ip_output.c">ip_output.c</a>、<a href="https://github.com/apple-oss-distributions/xnu/blob/main/bsd/netinet6/ip6_input.c">ip6_input.c</a> 与 <a href="https://github.com/apple-oss-distributions/xnu/blob/main/bsd/netinet6/nd6.c">nd6.c</a>。</li>
     <li><strong>切换窗口：</strong>新建或重置源需要一轮基线；路由删除时尚未采到的尾部流量可能丢失。目标是稳定的实时显示，不做历史累计流量账本。</li>
-    <li><strong>验证边界：</strong>本机正式采集、包内混淆 JNI、受控上下行及自通信排除已验证。完整 VPN 模式、多物理网卡、睡眠唤醒、旧版 macOS、Windows/Linux 和完整应用的多屏交互仍待实机验收；包内验证使用系统 JDK 21 加载应用包 JAR，未覆盖打包运行时的完整 GUI 启动。底层 RX 计数未更新的具体系统责任仍未确定。</li>
+    <li><strong>验证边界：</strong>本机正式采集、包内混淆 JNI 和注入持续失败后的自动恢复已验证。多日运行、完整 VPN 模式、睡眠唤醒、旧版 macOS 与 Windows/Linux 仍需实机观察；本次包内采集验证使用系统 JDK 21 加载应用包 JAR。底层 legacy RX 计数未更新的具体系统责任仍未确定。</li>
   </ul>
 
   <footer class="meta">
     <p>本机诊断材料：<a href="../build/reports/net-speed-diagnosis/controlled-traffic.json">受控下载与回环记录</a>、<a href="../build/reports/net-speed-diagnosis/self-address-filtered.json">本机地址过滤记录</a>、<a href="../build/reports/net-speed-diagnosis/route-probe.m">原生采集探针</a>、<a href="../build/reports/net-speed-diagnosis/native-cost.txt">探针开销</a>。这些材料位于被忽略的 build 目录，clean 后可被删除；关键测量结果已保留在本方案正文。</p>
     <p>实现验证材料：<a href="../build/test-results/desktopTest/TEST-top.ntutn.floatclock.net.NetSpeedMonitorTest.xml">新增网速测试结果</a>、<a href="../build/reports/net-speed-diagnosis/native-implementation-check.json">正式原生生命周期与过滤</a>、<a href="../build/reports/net-speed-fix/packaged-network.json">应用包内上下行采集记录</a>、<a href="../build/reports/net-speed-fix/release-build.log">发布构建记录</a>。</p>
-    <p>macOS 应用：<code>build/compose/binaries/main-release/app/floatclock.app</code>。</p>
+    <p>自动恢复验证：<a href="../build/reports/net-speed-longrun/native-recovery.jsonl">真实 JNI 故障恢复与释放记录</a>、<a href="../build/reports/net-speed-longrun/recovery-tests.log">Kotlin 与原生回归构建记录</a>、<a href="../build/reports/net-speed-longrun/release-sampler-check.jsonl">Release 采集记录</a>、<a href="../build/reports/net-speed-longrun/updated-release-health.json">本机更新后采样状态</a>。macOS 应用：<code>build/compose/binaries/main-release/app/floatclock.app</code>。</p>
   </footer>
 </main></body>
 </html>

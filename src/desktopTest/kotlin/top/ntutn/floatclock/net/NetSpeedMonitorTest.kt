@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -288,7 +289,7 @@ class NetSpeedMonitorTest {
     }
 
     @Test
-    fun initializationFailureEndsSessionAndReopeningCanRecover() = runBlocking {
+    fun initializationFailureRetriesAndRecoversWithoutReopening() = runBlocking {
         val attempts = AtomicInteger()
         val clock = AtomicLong()
         val source = ControlledSource()
@@ -300,16 +301,14 @@ class NetSpeedMonitorTest {
             },
             nanoTime = { clock.getAndAdd(second) },
         )
-        withTimeout(5_000) {
-            launch { monitor.run() }.join()
-        }
-        assertEquals(1, attempts.get())
-        assertNull(monitor.speed.value)
-
         val job = launch { monitor.run() }
         try {
             withTimeout(5_000) {
-                source.answer { mapOf("wifi" to TrafficCounters(100, 200)) }
+                source.answer {
+                    assertEquals(2, attempts.get())
+                    assertNull(monitor.speed.value)
+                    mapOf("wifi" to TrafficCounters(100, 200))
+                }
                 source.answer { mapOf("wifi" to TrafficCounters(500, 400)) }
                 monitor.speed.first { it == NetSpeed(400, 200) }
                 assertEquals(2, attempts.get())
@@ -323,9 +322,199 @@ class NetSpeedMonitorTest {
         assertNull(monitor.speed.value)
     }
 
-    private class ControlledSource : TrafficCounterSource {
+    @Test
+    fun consecutiveFailuresRecreateSourceAndRecoveryDoesNotReportLifetimeBytes() = runBlocking {
+        val attempts = AtomicInteger()
+        val active = AtomicInteger()
+        val clock = AtomicLong()
+        val original = ControlledSource { active.decrementAndGet() }
+        val replacement = ControlledSource { active.decrementAndGet() }
+        val monitor = NetSpeedMonitor(
+            intervalMs = 1,
+            sourceFactory = {
+                val source = when (attempts.incrementAndGet()) {
+                    1 -> original
+                    2 -> replacement
+                    else -> throw AssertionError("The replacement source should remain usable")
+                }
+                assertEquals(0, active.getAndIncrement(), "Sources must not overlap during recovery")
+                source
+            },
+            nanoTime = { clock.getAndAdd(second) },
+        )
+        val job = launch { monitor.run() }
+        try {
+            withTimeout(5_000) {
+                original.answer { mapOf("wifi" to TrafficCounters(1_000, 2_000)) }
+                original.answer { mapOf("wifi" to TrafficCounters(1_100, 2_200)) }
+                monitor.speed.first { it == NetSpeed(100, 200) }
+
+                repeat(3) { original.answer { throw IOException("Persistent sampling failure") } }
+                replacement.answer {
+                    assertTrue(original.closed)
+                    assertEquals(1, original.closeCalls.get())
+                    assertEquals(2, attempts.get())
+                    assertNull(monitor.speed.value)
+                    mapOf("wifi" to TrafficCounters(40_000_000_000, 50_000_000_000))
+                }
+                replacement.answer {
+                    assertNull(monitor.speed.value)
+                    mapOf("wifi" to TrafficCounters(40_000_000_700, 50_000_000_900))
+                }
+                monitor.speed.first { it == NetSpeed(700, 900) }
+            }
+        } finally {
+            job.cancel()
+            original.cancelPendingSample()
+            replacement.cancelPendingSample()
+            withContext(NonCancellable) { job.join() }
+        }
+        assertEquals(0, active.get())
+        assertEquals(1, original.closeCalls.get())
+        assertEquals(1, replacement.closeCalls.get())
+        assertNull(monitor.speed.value)
+    }
+
+    @Test
+    fun availableSpeedResetsFailureBudgetOnExistingSource() = runBlocking {
+        val attempts = AtomicInteger()
+        val clock = AtomicLong()
+        val source = ControlledSource()
+        val monitor = NetSpeedMonitor(
+            intervalMs = 1,
+            sourceFactory = {
+                assertEquals(1, attempts.incrementAndGet(), "Intermittent failures must not recreate a working source")
+                source
+            },
+            nanoTime = { clock.getAndAdd(second) },
+        )
+        val job = launch { monitor.run() }
+        try {
+            withTimeout(5_000) {
+                repeat(2) { source.answer { throw IOException("Temporary sampling failure") } }
+                source.answer { mapOf("wifi" to TrafficCounters(1_000, 2_000)) }
+                source.answer { mapOf("wifi" to TrafficCounters(1_100, 2_200)) }
+                monitor.speed.first { it == NetSpeed(100, 200) }
+                repeat(2) { source.answer { throw IOException("Another temporary sampling failure") } }
+                source.answer {
+                    assertFalse(source.closed)
+                    assertEquals(1, attempts.get())
+                    mapOf("wifi" to TrafficCounters(1_000_000, 2_000_000))
+                }
+                source.answer {
+                    assertNull(monitor.speed.value)
+                    mapOf("wifi" to TrafficCounters(1_000_500, 2_000_600))
+                }
+                monitor.speed.first { it == NetSpeed(500, 600) }
+            }
+        } finally {
+            job.cancel()
+            source.cancelPendingSample()
+            withContext(NonCancellable) { job.join() }
+        }
+        assertEquals(1, attempts.get())
+        assertEquals(1, source.closeCalls.get())
+        assertNull(monitor.speed.value)
+    }
+
+    @Test
+    fun failuresAlternatingWithBaselinesStillRecreateAnUnavailableSource() = runBlocking {
+        val attempts = AtomicInteger()
+        val clock = AtomicLong()
+        val original = ControlledSource()
+        val replacement = ControlledSource()
+        val monitor = NetSpeedMonitor(
+            intervalMs = 1,
+            sourceFactory = {
+                when (attempts.incrementAndGet()) {
+                    1 -> original
+                    2 -> replacement
+                    else -> throw AssertionError("The replacement source should remain usable")
+                }
+            },
+            nanoTime = { clock.getAndAdd(second) },
+        )
+        val job = launch { monitor.run() }
+        try {
+            withTimeout(5_000) {
+                original.answer { throw IOException("First sampling failure") }
+                original.answer { mapOf("wifi" to TrafficCounters(1_000, 2_000)) }
+                original.answer { throw IOException("Second sampling failure") }
+                original.answer { mapOf("wifi" to TrafficCounters(100_000, 200_000)) }
+                original.answer { throw IOException("Third sampling failure without usable speed") }
+
+                replacement.answer {
+                    assertTrue(original.closed)
+                    assertEquals(2, attempts.get())
+                    assertNull(monitor.speed.value)
+                    mapOf("wifi" to TrafficCounters(40_000_000_000, 50_000_000_000))
+                }
+                replacement.answer {
+                    assertNull(monitor.speed.value)
+                    mapOf("wifi" to TrafficCounters(40_000_000_500, 50_000_000_600))
+                }
+                monitor.speed.first { it == NetSpeed(500, 600) }
+            }
+        } finally {
+            job.cancel()
+            original.cancelPendingSample()
+            replacement.cancelPendingSample()
+            withContext(NonCancellable) { job.join() }
+        }
+        assertEquals(1, original.closeCalls.get())
+        assertEquals(1, replacement.closeCalls.get())
+        assertNull(monitor.speed.value)
+    }
+
+    @Test
+    fun cancellingWhileFailedSourceClosesDoesNotOpenReplacementOrCloseTwice() = runBlocking {
+        val closing = CompletableDeferred<Unit>()
+        val allowClose = CountDownLatch(1)
+        val attempts = AtomicInteger()
+        val active = AtomicInteger()
+        val original = ControlledSource {
+            closing.complete(Unit)
+            allowClose.await()
+            active.decrementAndGet()
+        }
+        val replacement = ControlledSource { active.decrementAndGet() }
+        val monitor = NetSpeedMonitor(
+            intervalMs = 1,
+            sourceFactory = {
+                val source = if (attempts.incrementAndGet() == 1) original else replacement
+                assertEquals(0, active.getAndIncrement())
+                source
+            },
+            nanoTime = System::nanoTime,
+        )
+        val job = launch { monitor.run() }
+        try {
+            withTimeout(5_000) {
+                repeat(3) { original.answer { throw IOException("Persistent sampling failure") } }
+                closing.await()
+                assertEquals(1, attempts.get())
+                job.cancel()
+                allowClose.countDown()
+                job.join()
+                assertEquals(1, attempts.get())
+                assertEquals(1, original.closeCalls.get())
+                assertEquals(0, replacement.closeCalls.get())
+                assertEquals(0, active.get())
+                assertNull(monitor.speed.value)
+            }
+        } finally {
+            job.cancel()
+            original.cancelPendingSample()
+            replacement.cancelPendingSample()
+            allowClose.countDown()
+            withContext(NonCancellable) { job.join() }
+        }
+    }
+
+    private class ControlledSource(private val onClose: () -> Unit = {}) : TrafficCounterSource {
         private val requests = Channel<Unit>(Channel.UNLIMITED)
         private val answers = LinkedBlockingQueue<() -> Map<String, TrafficCounters>>()
+        val closeCalls = AtomicInteger()
 
         @Volatile
         var closed = false
@@ -346,7 +535,9 @@ class NetSpeedMonitorTest {
         }
 
         override fun close() {
+            onClose()
             closed = true
+            closeCalls.incrementAndGet()
         }
     }
 }

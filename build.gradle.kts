@@ -37,6 +37,35 @@ val compileMacOSBridge by tasks.registering(Exec::class) {
     }
 }
 
+val macOSNetworkTestSource = layout.projectDirectory.file("src/desktopTest/native/macos/FloatClockNetworkStatsTest.m")
+val macOSNetworkTestBinary = layout.buildDirectory.file("bin/macos-tests/network-stats-test")
+
+val compileMacOSNetworkStatsTest by tasks.registering(Exec::class) {
+    onlyIf { System.getProperty("os.name").startsWith("Mac", ignoreCase = true) }
+    inputs.files(macOSNetworkTestSource, macOSNetworkSource)
+    outputs.file(macOSNetworkTestBinary)
+    doFirst {
+        val binary = macOSNetworkTestBinary.get().asFile
+        binary.parentFile.mkdirs()
+        val javaHome = System.getProperty("java.home")
+        commandLine(
+            "xcrun", "clang", "-fobjc-arc", "-fblocks", "-Wall", "-Wextra", "-Werror",
+            "-framework", "Foundation",
+            "-I$javaHome/include", "-I$javaHome/include/darwin",
+            macOSNetworkTestSource.asFile.absolutePath,
+            "-o", binary.absolutePath,
+        )
+    }
+}
+
+val testMacOSNetworkStats by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Checks native route filtering and query lifecycle with an in-process provider."
+    dependsOn(compileMacOSNetworkStatsTest)
+    onlyIf { System.getProperty("os.name").startsWith("Mac", ignoreCase = true) }
+    commandLine(macOSNetworkTestBinary.get().asFile.absolutePath)
+}
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeCompiler)
@@ -96,6 +125,10 @@ kotlin {
 
 tasks.named("desktopProcessResources") {
     dependsOn(compileMacOSBridge)
+}
+
+tasks.named("desktopTest") {
+    dependsOn(testMacOSNetworkStats)
 }
 
 tasks.withType<AbstractJPackageTask>().configureEach {

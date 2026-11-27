@@ -18,6 +18,8 @@ import top.ntutn.floatclock.macos.MacOSNetworkStats
 
 data class NetSpeed(val downBytesPerSec: Long, val upBytesPerSec: Long)
 
+private const val MAX_FAILURES_WITHOUT_SPEED = 3
+
 internal data class TrafficCounters(val received: Long, val sent: Long)
 
 internal interface TrafficCounterSource : AutoCloseable {
@@ -70,42 +72,57 @@ class NetSpeedMonitor internal constructor(
     suspend fun run() = withContext(Dispatchers.IO) {
         runMutex.withLock {
             _speed.value = null
-            val source = try {
-                sourceFactory()
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                logger.warn("Unable to initialize network speed sampling", failure)
-                return@withLock
-            }
+            var source: TrafficCounterSource? = null
             val calculator = TrafficRateCalculator()
-            var unavailable = false
+            var failuresWithoutSpeed = 0
+            var lastFailure: Exception? = null
             try {
                 while (currentCoroutineContext().isActive) {
                     try {
-                        val counters = source.sample()
+                        val currentSource = source ?: sourceFactory().also { source = it }
+                        currentCoroutineContext().ensureActive()
+                        val counters = currentSource.sample()
                         currentCoroutineContext().ensureActive()
                         _speed.value = calculator.sample(counters, nanoTime())
-                        if (unavailable) logger.debug("Network speed sampling recovered")
-                        unavailable = false
+                        if (_speed.value != null) {
+                            failuresWithoutSpeed = 0
+                            if (lastFailure != null) logger.debug("Network speed sampling recovered")
+                            lastFailure = null
+                        }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (failure: Exception) {
                         calculator.reset()
                         _speed.value = null
-                        if (!unavailable) logger.warn("Network speed sampling is unavailable", failure)
-                        unavailable = true
+                        // Native exceptions keep changing generation details after the first line.
+                        if (lastFailure?.javaClass != failure.javaClass ||
+                            lastFailure?.message?.substringBefore('\n') != failure.message?.substringBefore('\n')
+                        ) {
+                            logger.warn("Network speed sampling is unavailable", failure)
+                        }
+                        lastFailure = failure
+                        failuresWithoutSpeed++
+                        if (source != null && failuresWithoutSpeed >= MAX_FAILURES_WITHOUT_SPEED) {
+                            logger.debug("Recreating network speed sampler after {} failures without a usable speed", failuresWithoutSpeed)
+                            closeSource(source)
+                            source = null
+                            failuresWithoutSpeed = 0
+                        }
                     }
                     delay(intervalMs)
                 }
             } finally {
                 _speed.value = null
-                try {
-                    source.close()
-                } catch (failure: Exception) {
-                    logger.warn("Unable to close network speed sampling", failure)
-                }
+                closeSource(source)
             }
+        }
+    }
+
+    private fun closeSource(source: TrafficCounterSource?) {
+        try {
+            source?.close()
+        } catch (failure: Exception) {
+            logger.warn("Unable to close network speed sampling", failure)
         }
     }
 }
